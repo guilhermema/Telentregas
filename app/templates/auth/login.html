@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Entrar - TelEntregas{% endblock %}
+{% block content %}
+<div class="mx-auto mt-8 max-w-md rounded-xl bg-white p-6 shadow-sm">
+  <h1 class="mb-6 text-2xl font-bold">Entrar</h1>
+  <form method="post" class="space-y-4">
+    {{ form.hidden_tag() }}
+    <div>
+      {{ form.username.label(class="mb-1 block text-sm font-medium") }}
+      {{ form.username(class="w-full rounded-lg border border-slate-300 px-3 py-2", autocomplete="username") }}
+      {% for error in form.username.errors %}
+        <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+      {% endfor %}
+    </div>
+    <div>
+      {{ form.password.label(class="mb-1 block text-sm font-medium") }}
+      {{ form.password(class="w-full rounded-lg border border-slate-300 px-3 py-2", autocomplete="current-password") }}
+      {% for error in form.password.errors %}
+        <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+      {% endfor %}
+    </div>
+    {{ form.submit(class="w-full rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700") }}
+  </form>
+</div>
+{% endblock %}
