@@ -1,4 +1,4 @@
-from flask import Flask, redirect, url_for
+from flask import Flask, redirect, send_from_directory, url_for
 from flask_login import current_user
 
 from config import Config
@@ -8,6 +8,11 @@ from app.extensions import csrf, db, login_manager, migrate
 def create_app(config_class: type[Config] = Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_class)
+    claim_email = app.config.get("VAPID_CLAIM_EMAIL", "")
+    app.logger.info(
+        "Configuração VAPID carregada: claim_email=%s",
+        "válido" if claim_email.lower().startswith("mailto:") else "inválido ou ausente",
+    )
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -32,6 +37,14 @@ def create_app(config_class: type[Config] = Config) -> Flask:
         if not current_user.is_authenticated or not current_user.ativo:
             return redirect(url_for("auth.login"))
         return redirect(url_for(ROLE_ENDPOINTS[current_user.role]))
+
+    @app.get("/manifest.json")
+    def manifest():
+        return send_from_directory(app.static_folder, "manifest.json")
+
+    @app.get("/sw.js")
+    def service_worker():
+        return send_from_directory(app.static_folder, "sw.js")
 
     return app
 
