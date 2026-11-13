@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="lg:flex lg:gap-6">
+  <button id="menu-central" class="mb-4 rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white lg:hidden">☰ Menu</button>
+  <aside id="sidebar-central" class="mb-5 hidden w-full shrink-0 rounded-xl bg-slate-900 p-3 text-white lg:block lg:w-56">
+    <nav class="space-y-1">
+      {% for endpoint, label in [('central.dashboard','Em andamento'),('central.farmacias','Farmácias'),('central.motoboys','Motoboys'),('central.precos','Tabela de Preços'),('central.clientes','Clientes')] %}
+        <a href="{{ url_for(endpoint) }}" class="block rounded-lg px-3 py-3 text-sm {% if request.endpoint == endpoint %}bg-indigo-600 font-bold{% else %}hover:bg-slate-700{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+  </aside>
+  <div class="min-w-0 flex-1">{% block central_content %}{% endblock %}</div>
+</div>
+<div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true">
+  <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+    <h2 id="confirm-title" class="text-xl font-bold">Confirmar ação</h2>
+    <p id="confirm-message" class="mt-2 text-slate-600"></p>
+    <div class="mt-6 flex justify-end gap-3">
+      <button type="button" data-modal-close class="rounded-lg border px-4 py-2">Voltar</button>
+      <button type="button" id="confirm-submit" class="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white">Confirmar</button>
+    </div>
+  </div>
+</div>
+<form id="confirm-form" class="hidden" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+<script>
+document.getElementById('menu-central')?.addEventListener('click', () => document.getElementById('sidebar-central').classList.toggle('hidden'));
+const confirmModal = document.getElementById('confirm-modal');
+const confirmForm = document.getElementById('confirm-form');
+function fecharConfirmacao() { confirmModal?.classList.add('hidden'); confirmModal?.classList.remove('flex'); }
+document.addEventListener('click', event => {
+  const botao = event.target.closest('[data-confirm-action]');
+  if (botao) {
+    event.preventDefault();
+    document.getElementById('confirm-title').textContent = botao.dataset.confirmTitle || 'Confirmar ação';
+    document.getElementById('confirm-message').textContent = botao.dataset.confirmMessage || 'Deseja continuar?';
+    confirmForm.action = botao.dataset.confirmAction;
+    confirmModal.classList.remove('hidden'); confirmModal.classList.add('flex');
+  }
+  if (event.target.closest('[data-modal-close]')) fecharConfirmacao();
+});
+document.getElementById('confirm-submit')?.addEventListener('click', () => confirmForm.submit());
+</script>
+{% endblock %}

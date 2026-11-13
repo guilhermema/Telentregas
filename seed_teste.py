@@ -20,6 +20,7 @@ def obter_usuario(username: str, role: str) -> User:
 def main() -> None:
     app = create_app()
     with app.app_context():
+        admin = obter_usuario("admin-teste", "admin")
         farmacia_user = obter_usuario("farmacia1", "farmacia")
         farmacia = Farmacia.query.filter_by(user_id=farmacia_user.id).first()
         if farmacia is None:
@@ -47,7 +48,7 @@ def main() -> None:
                 db.session.add(Motoboy(user_id=user.id, nome=nome, telefone=telefone, placa_moto=placa))
 
         db.session.commit()
-        print("Dados de teste criados. Usuários: farmacia1, motoboy1 e motoboy2.")
+        print("Dados de teste criados. Usuários: admin-teste, farmacia1, motoboy1 e motoboy2.")
         print(f"Senha dos usuários de teste: {SENHA_TESTE}")
 
 

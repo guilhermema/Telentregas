@@ -1,0 +1,69 @@
+{% extends "central/base.html" %}
+{% block title %}Em andamento - Central{% endblock %}
+{% block central_content %}
+<div class="space-y-5">
+  <h1 class="text-2xl font-bold">Entregas em andamento</h1>
+  <form class="grid gap-3 rounded-xl bg-white p-4 shadow-sm sm:grid-cols-3">
+    <select name="farmacia_id" class="rounded-lg border px-3 py-2"><option value="">Todas as farmácias</option>{% for farmacia in farmacias %}<option value="{{ farmacia.id }}" {% if farmacia_filter == farmacia.id|string %}selected{% endif %}>{{ farmacia.razao_social }}</option>{% endfor %}</select>
+    <select name="status" class="rounded-lg border px-3 py-2"><option value="">Todos os status</option>{% for status in ['pendente','aceita','coletada'] %}<option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status|capitalize }}</option>{% endfor %}</select>
+    <button class="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white">Filtrar</button>
+  </form>
+  <div id="central-entregas" class="space-y-3"><p class="text-slate-500">Carregando...</p></div>
+</div>
+<div id="cancel-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true">
+  <div class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+    <h2 class="text-xl font-bold">Cancelar entrega</h2>
+    <p id="cancel-details" class="mt-2 text-slate-600"></p>
+    <form id="cancel-form" method="post" class="mt-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="block text-sm font-semibold" for="cancel-reason">Motivo do cancelamento</label>
+      <textarea id="cancel-reason" name="motivo_cancelamento" minlength="3" required rows="4" class="mt-1 w-full rounded-lg border px-3 py-2"></textarea>
+      <p id="cancel-error" class="mt-1 hidden text-sm text-red-600">Informe pelo menos 3 caracteres.</p>
+      <div class="mt-5 flex justify-end gap-3">
+        <button type="button" id="cancel-back" class="rounded-lg border px-4 py-2">Voltar</button>
+        <button type="submit" class="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white">Confirmar cancelamento</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+const params = new URLSearchParams({farmacia_id: '{{ farmacia_filter }}', status: '{{ status_filter }}'});
+const statusClass = {pendente:'bg-amber-100 text-amber-800', aceita:'bg-blue-100 text-blue-800', coletada:'bg-purple-100 text-purple-800'};
+const container = document.getElementById('central-entregas');
+const cancelModal = document.getElementById('cancel-modal');
+const cancelForm = document.getElementById('cancel-form');
+const cancelReason = document.getElementById('cancel-reason');
+function fecharCancelamento() { cancelModal.classList.add('hidden'); cancelModal.classList.remove('flex'); }
+container.addEventListener('click', event => {
+  const button = event.target.closest('[data-cancel-id]');
+  if (!button) return;
+  document.getElementById('cancel-details').textContent = `Cliente: ${decodeURIComponent(button.dataset.cancelCliente)} · Bairro: ${decodeURIComponent(button.dataset.cancelBairro)}`;
+  cancelForm.action = `/central/entregas/${button.dataset.cancelId}/cancelar`;
+  document.getElementById('cancel-error').classList.add('hidden');
+  cancelModal.classList.remove('hidden'); cancelModal.classList.add('flex');
+  cancelReason.focus();
+});
+document.getElementById('cancel-back').addEventListener('click', fecharCancelamento);
+cancelForm.addEventListener('submit', event => {
+  if (cancelReason.value.trim().length < 3) {
+    event.preventDefault();
+    document.getElementById('cancel-error').classList.remove('hidden');
+    cancelReason.focus();
+  }
+});
+function mostrarSessaoExpirada() {
+  clearInterval(polling);
+  container.innerHTML = '<p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">Sessão expirada, <a class="font-bold underline" href="/auth/login">entre novamente</a>.</p>';
+}
+function atualizar() {
+ fetch('{{ url_for("central.andamento_json") }}?' + params).then(response => {
+   if (response.status === 401 || response.status === 403) { mostrarSessaoExpirada(); throw new Error('sessao'); }
+   return response.json();
+ }).then(data => {
+  container.innerHTML=data.entregas.length ? data.entregas.map(e => `<article class="rounded-xl bg-white p-4 shadow-sm"><div class="flex flex-wrap justify-between gap-2"><strong>${e.farmacia} · ${e.cliente}</strong><span class="rounded-full px-3 py-1 text-xs font-semibold ${statusClass[e.status]}">${e.status}</span></div><p class="mt-2 text-sm text-slate-600">${e.bairro} · R$ ${e.taxa} · Motoboy: ${e.motoboy || 'Aguardando'}</p><p class="text-xs text-slate-500">Criada: ${new Date(e.criacao).toLocaleString('pt-BR')}</p><button data-cancel-id="${e.id}" data-cancel-cliente="${encodeURIComponent(e.cliente)}" data-cancel-bairro="${encodeURIComponent(e.bairro)}" class="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white">Cancelar</button></article>`).join('') : '<p class="rounded-xl bg-white p-4 text-slate-500">Nenhuma entrega encontrada.</p>';
+ }).catch(error => { if (error.message !== 'sessao') container.dataset.error = 'true'; });
+}
+let polling = setInterval(atualizar, 10000);
+atualizar();
+</script>
+{% endblock %}

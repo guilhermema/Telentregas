@@ -94,6 +94,12 @@ function renderizar(entregas) {
 async function atualizarPraca() {
   try {
     const response = await fetch('{{ url_for("motoboy.praca_json") }}');
+    if (response.status === 401 || response.status === 403) {
+      clearInterval(window.motoboyPolling);
+      mostrarMensagem('Sessão expirada, entre novamente.', true);
+      mensagem.innerHTML = 'Sessão expirada, <a class="font-bold underline" href="/auth/login">entre novamente</a>.';
+      return;
+    }
     const data = await response.json();
     const ids = new Set(data.entregas.map(e => e.id));
     if (data.entregas.length > ultimaQuantidade || [...ids].some(id => !statusConhecidos.has(id))) tocarAlerta();
@@ -113,6 +119,6 @@ document.getElementById('ativar-notificacoes').addEventListener('click', async (
   mostrarMensagem(response.ok ? 'Notificações ativadas.' : 'Não foi possível salvar as notificações.', !response.ok);
 });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
-atualizarPraca(); setInterval(atualizarPraca, 10000);
+atualizarPraca(); window.motoboyPolling = setInterval(atualizarPraca, 10000);
 </script>
 {% endblock %}

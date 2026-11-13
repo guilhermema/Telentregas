@@ -100,7 +100,14 @@ atualizarTaxa(); atualizarTroco();
 function formatarData(valor) { return valor ? new Date(valor).toLocaleString('pt-BR') : '-'; }
 function atualizarAndamento() {
   fetch('{{ url_for("farmacia.andamento_json") }}', {headers: {'Accept': 'application/json'}})
-    .then(response => response.ok ? response.json() : Promise.reject(response))
+    .then(response => {
+      if (response.status === 401 || response.status === 403) {
+        clearInterval(window.farmaciaPolling);
+        document.getElementById('entregas-andamento').innerHTML = '<p class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800">Sessão expirada, <a class="font-bold underline" href="/auth/login">entre novamente</a>.</p>';
+        throw new Error('sessao');
+      }
+      return response.ok ? response.json() : Promise.reject(response);
+    })
     .then(data => {
       const container = document.getElementById('entregas-andamento');
       if (!data.entregas.length) { container.innerHTML = '<p class="text-slate-500">Nenhuma entrega em andamento.</p>'; return; }
@@ -116,6 +123,6 @@ function atualizarAndamento() {
     }).catch(() => {});
 }
 atualizarAndamento();
-setInterval(atualizarAndamento, 10000);
+window.farmaciaPolling = setInterval(atualizarAndamento, 10000);
 </script>
 {% endblock %}
