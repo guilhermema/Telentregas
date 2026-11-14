@@ -2,7 +2,7 @@ from datetime import datetime
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user
-from sqlalchemy import update
+from sqlalchemy import case, update
 
 from app.extensions import db
 from app.models import Entrega, Motoboy, PushSubscription
@@ -28,8 +28,23 @@ def dashboard():
 @role_required("motoboy")
 def praca_json():
     Entrega.query.session.expire_all()
+    motoboy = _motoboy_logado()
     entregas = Entrega.query.filter_by(status="pendente").order_by(Entrega.data_criacao.asc()).all()
-    return jsonify({"entregas": [_praca_json(entrega) for entrega in entregas]})
+    ativas = Entrega.query.filter(
+        Entrega.motoboy_id == motoboy.id,
+        Entrega.status.in_(("aceita", "coletada")),
+    ).order_by(
+        case((Entrega.status == "coletada", 0), else_=1),
+        Entrega.data_aceite.asc(),
+    ).all()
+    canceladas = Entrega.query.filter_by(motoboy_id=motoboy.id, status="cancelada").order_by(
+        Entrega.data_cancelamento.desc()
+    ).limit(30).all()
+    return jsonify({
+        "entregas": [_praca_json(entrega) for entrega in entregas],
+        "ativas": [_ativa_json(entrega) for entrega in ativas],
+        "canceladas": [_cancelada_json(entrega) for entrega in canceladas],
+    })
 
 
 @motoboy_bp.post("/entregas/<int:entrega_id>/aceitar")
@@ -43,10 +58,8 @@ def aceitar(entrega_id: int):
     )
     db.session.commit()
     if result.rowcount != 1:
-        flash("Esta corrida já foi aceita por outro motoboy", "error")
-    else:
-        flash("Corrida aceita.", "success")
-    return redirect(url_for("motoboy.dashboard"))
+        return _acao_response(False, "Esta corrida já foi aceita por outro motoboy", 409)
+    return _acao_response(True, "Corrida aceita.")
 
 
 @motoboy_bp.post("/entregas/<int:entrega_id>/avancar")
@@ -57,8 +70,7 @@ def avancar(entrega_id: int):
     proximo = {"aceita": ("coletada", "data_coleta"), "coletada": ("entregue", "data_entrega")}
     destino = proximo.get(entrega.status)
     if destino is None:
-        flash("Esta corrida não pode avançar a partir do status atual.", "error")
-        return redirect(url_for("motoboy.dashboard"))
+        return _acao_response(False, "Esta corrida não pode avançar a partir do status atual.", 409)
 
     status_novo, campo_data = destino
     result = db.session.execute(
@@ -72,10 +84,66 @@ def avancar(entrega_id: int):
     )
     db.session.commit()
     if result.rowcount != 1:
-        flash("A corrida foi atualizada. Recarregue a lista.", "error")
+        return _acao_response(False, "A corrida foi atualizada. Recarregue a lista.", 409)
+    return _acao_response(True, f"Status atualizado para {status_novo}.")
+
+
+@motoboy_bp.post("/entregas/coletar")
+@role_required("motoboy")
+def coletar_selecionadas():
+    motoboy = _motoboy_logado()
+    payload = request.get_json(silent=True)
+    ids = payload.get("entrega_ids") if isinstance(payload, dict) else None
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"ok": False, "mensagem": "Selecione ao menos uma corrida."}), 400
+    if len(ids) > 20:
+        return jsonify({"ok": False, "mensagem": "Você pode coletar no máximo 20 corridas por vez."}), 400
+
+    ids_convertidos = []
+    for valor in ids:
+        if isinstance(valor, bool):
+            return jsonify({"ok": False, "mensagem": "Os identificadores das corridas são inválidos."}), 400
+        if not isinstance(valor, (int, str)):
+            return jsonify({"ok": False, "mensagem": "Os identificadores das corridas são inválidos."}), 400
+        try:
+            id_convertido = int(valor)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "mensagem": "Os identificadores das corridas são inválidos."}), 400
+        if id_convertido <= 0 or (isinstance(valor, str) and str(id_convertido) != valor.strip()):
+            return jsonify({"ok": False, "mensagem": "Os identificadores das corridas são inválidos."}), 400
+        ids_convertidos.append(id_convertido)
+    if len(set(ids_convertidos)) != len(ids_convertidos):
+        return jsonify({"ok": False, "mensagem": "A mesma corrida foi selecionada mais de uma vez."}), 400
+
+    agora = datetime.utcnow()
+    coletadas = []
+    falharam = []
+    for entrega_id in ids_convertidos:
+        result = db.session.execute(
+            update(Entrega).where(
+                Entrega.id == entrega_id,
+                Entrega.motoboy_id == motoboy.id,
+                Entrega.status == "aceita",
+            ).values(status="coletada", data_coleta=agora)
+        )
+        if result.rowcount == 1:
+            coletadas.append(entrega_id)
+        else:
+            falharam.append(entrega_id)
+    db.session.commit()
+    if falharam:
+        mensagem = (
+            f"{len(coletadas)} corrida(s) coletada(s). "
+            f"Não foi possível coletar {len(falharam)} corrida(s), pois o status já havia mudado."
+        )
     else:
-        flash(f"Status atualizado para {status_novo}.", "success")
-    return redirect(url_for("motoboy.dashboard"))
+        mensagem = f"{len(coletadas)} corrida(s) marcada(s) como coletada(s)."
+    return jsonify({
+        "ok": bool(coletadas),
+        "mensagem": mensagem,
+        "coletadas": coletadas,
+        "falharam": falharam,
+    })
 
 
 @motoboy_bp.post("/api/push-subscription")
@@ -123,3 +191,37 @@ def _praca_json(entrega: Entrega) -> dict:
         "usa_maquininha": entrega.usa_maquininha,
         "farmacia": entrega.farmacia.razao_social,
     }
+
+
+def _ativa_json(entrega: Entrega) -> dict:
+    return {
+        "id": entrega.id,
+        "status": entrega.status,
+        "farmacia": entrega.farmacia.razao_social,
+        "nome_cliente": entrega.nome_cliente,
+        "telefone_cliente": entrega.telefone_cliente,
+        "endereco_entrega": entrega.endereco_entrega,
+        "bairro": entrega.bairro_entrega,
+        "valor_taxa": f"{entrega.valor_taxa:.2f}",
+        "precisa_troco": entrega.precisa_troco,
+        "valor_troco": f"{entrega.valor_troco:.2f}" if entrega.valor_troco is not None else None,
+        "usa_maquininha": entrega.usa_maquininha,
+        "observacoes": entrega.observacoes,
+        "data_aceite": entrega.data_aceite.isoformat() if entrega.data_aceite else None,
+        "data_coleta": entrega.data_coleta.isoformat() if entrega.data_coleta else None,
+    }
+
+
+def _cancelada_json(entrega: Entrega) -> dict:
+    return {
+        "id": entrega.id,
+        "bairro": entrega.bairro_entrega,
+        "motivo": entrega.motivo_cancelamento or "Não informado",
+    }
+
+
+def _acao_response(ok: bool, mensagem: str, status: int = 200):
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        return jsonify({"ok": ok, "mensagem": mensagem}), status
+    flash(mensagem, "success" if ok else "error")
+    return redirect(url_for("motoboy.dashboard"))

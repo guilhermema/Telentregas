@@ -5,3 +5,4 @@ __pycache__/
 instance/
 .vscode/
 *.log
+*.sql

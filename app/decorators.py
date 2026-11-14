@@ -12,7 +12,11 @@ def role_required(*roles: str) -> Callable[[F], F]:
     def decorator(view: F) -> F:
         @wraps(view)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
-            is_json_endpoint = request.path.startswith("/api/") or "/api/" in request.path
+            is_json_endpoint = (
+                request.path.startswith("/api/")
+                or "/api/" in request.path
+                or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            )
             if not current_user.is_authenticated:
                 if is_json_endpoint:
                     return jsonify({"erro": "Sessão expirada."}), 401

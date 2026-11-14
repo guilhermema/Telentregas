@@ -61,6 +61,8 @@ def cancelar_entrega(entrega_id: int):
     if len(motivo) < 3:
         flash("O motivo do cancelamento é obrigatório e deve ter pelo menos 3 caracteres.", "error")
         return redirect(url_for("central.dashboard"))
+    entrega = Entrega.query.filter_by(id=entrega_id).first()
+    motoboy_id = entrega.motoboy_id if entrega else None
     result = db.session.execute(
         update(Entrega)
         .where(Entrega.id == entrega_id, Entrega.status.in_(ATIVOS))
@@ -70,6 +72,10 @@ def cancelar_entrega(entrega_id: int):
     if result.rowcount != 1:
         flash("A entrega já foi atualizada e não pode mais ser cancelada.", "error")
     else:
+        if motoboy_id:
+            from app.push import notificar_cancelamento
+
+            notificar_cancelamento(entrega, motoboy_id)
         flash("Entrega cancelada.", "success")
     return redirect(url_for("central.dashboard"))
 

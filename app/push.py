@@ -37,6 +37,25 @@ def notificar_motoboys(entrega: Entrega) -> None:
     app.logger.info("Push enfileirado: entrega_id=%s destinatarios=%s", entrega.id, len(subscriptions))
 
 
+def notificar_cancelamento(entrega: Entrega, motoboy_id: int) -> None:
+    app = current_app._get_current_object()
+    from app.models import Motoboy
+
+    motoboy = db.session.get(Motoboy, motoboy_id)
+    subscriptions = []
+    if motoboy:
+        subscriptions = [
+            {"id": item.id, "endpoint": item.endpoint, "p256dh": item.p256dh, "auth": item.auth}
+            for item in motoboy.user.push_subscriptions
+        ]
+    payload = {
+        "title": "Corrida cancelada",
+        "body": f"{entrega.bairro_entrega} - {entrega.motivo_cancelamento or 'Sem motivo'}",
+        "url": "/motoboy/",
+    }
+    Thread(target=_enviar_pushes, args=(app, subscriptions, payload), daemon=True, name="push-cancelamento").start()
+
+
 def _subscriptions_ativas():
     from app.models import PushSubscription, User
 
