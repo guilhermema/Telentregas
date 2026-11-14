@@ -54,6 +54,8 @@ class Farmacia(db.Model):
     endereco_fixo = db.Column(db.String(300), nullable=False)
     cidade = db.Column(db.String(100), nullable=False, default="Itajaí", server_default="Itajaí")
     uf = db.Column(db.String(2), nullable=False, default="SC", server_default="SC")
+    latitude = db.Column(Numeric(9, 6), nullable=True)
+    longitude = db.Column(Numeric(9, 6), nullable=True)
     telefone = db.Column(db.String(30), nullable=False)
     responsavel_financeiro = db.Column(db.String(150), nullable=False)
 
@@ -62,6 +64,7 @@ class Farmacia(db.Model):
         "BairroPreco", back_populates="farmacia", cascade="all, delete-orphan"
     )
     entregas = db.relationship("Entrega", back_populates="farmacia")
+    clientes = db.relationship("Cliente", back_populates="farmacia", cascade="all, delete-orphan")
 
 
 class BairroPreco(db.Model):
@@ -107,6 +110,9 @@ class Entrega(db.Model):
     motoboy_id = db.Column(
         db.Integer, db.ForeignKey("motoboys.id", ondelete="RESTRICT"), nullable=True
     )
+    cliente_id = db.Column(
+        db.Integer, db.ForeignKey("clientes.id", ondelete="RESTRICT"), nullable=False
+    )
     nome_cliente = db.Column(db.String(150), nullable=False)
     telefone_cliente = db.Column(db.String(30), nullable=False)
     endereco_entrega = db.Column(db.String(300), nullable=False)
@@ -126,6 +132,7 @@ class Entrega(db.Model):
 
     farmacia = db.relationship("Farmacia", back_populates="entregas")
     motoboy = db.relationship("Motoboy", back_populates="entregas")
+    cliente = db.relationship("Cliente", back_populates="entregas")
 
     __table_args__ = (
         CheckConstraint(
@@ -143,6 +150,35 @@ class Entrega(db.Model):
             name="ck_entregas_troco_consistente",
         ),
     )
+
+
+class Cliente(db.Model):
+    __tablename__ = "clientes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    farmacia_id = db.Column(db.Integer, db.ForeignKey("farmacias.id", ondelete="CASCADE"), nullable=False)
+    cpf = db.Column(db.String(11), nullable=False)
+    nome = db.Column(db.String(150), nullable=False)
+    telefone = db.Column(db.String(11), nullable=False)
+    criado_em = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    atualizado_em = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    farmacia = db.relationship("Farmacia", back_populates="clientes")
+    enderecos = db.relationship("EnderecoCliente", back_populates="cliente", cascade="all, delete-orphan")
+    entregas = db.relationship("Entrega", back_populates="cliente")
+    __table_args__ = (UniqueConstraint("farmacia_id", "cpf", name="uq_clientes_farmacia_cpf"),)
+
+
+class EnderecoCliente(db.Model):
+    __tablename__ = "enderecos_clientes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False)
+    endereco = db.Column(db.String(300), nullable=False)
+    bairro = db.Column(db.String(120), nullable=False)
+    complemento = db.Column(db.String(200), nullable=True)
+    ultimo_uso = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    ativo = db.Column(db.Boolean, nullable=False, default=True, server_default="true")
+    cliente = db.relationship("Cliente", back_populates="enderecos")
 
 
 class PushSubscription(db.Model):

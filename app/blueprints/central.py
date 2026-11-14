@@ -3,16 +3,18 @@ from decimal import Decimal, InvalidOperation
 import json
 import re
 import unicodedata
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from pathlib import Path
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash
 
 from app.decorators import role_required
 from app.extensions import db
-from app.models import BairroPreco, Entrega, Farmacia, Motoboy, User
+from app.models import BairroPreco, Cliente, Entrega, Farmacia, Motoboy, User
 from app.report import (
     brl,
     cancelled_data,
@@ -26,6 +28,7 @@ from app.report import (
     summary_data,
 )
 from app.report import SAO_PAULO
+from app.utils.validators import mask_cpf
 
 central_bp = Blueprint("central", __name__)
 ATIVOS = ("pendente", "aceita", "coletada")
@@ -43,6 +46,27 @@ def _localidade_valida(cidade: str, uf: str) -> bool:
     dados = _municipios_ibge()
     estados = {estado["sigla"] for estado in dados["estados"]}
     return uf in estados and cidade in dados["municipios"].get(uf, [])
+
+
+def _geocodificar_farmacia(farmacia: Farmacia) -> None:
+    consulta = f"{farmacia.endereco_fixo}, {farmacia.cidade}, {farmacia.uf}, Brasil"
+    parametros = urlencode({"q": consulta, "format": "jsonv2", "limit": 1})
+    try:
+        requisicao = Request(
+            f"https://nominatim.openstreetmap.org/search?{parametros}",
+            headers={"User-Agent": "TelEntregas/1.0 contato-central"},
+        )
+        with urlopen(requisicao, timeout=5) as resposta:
+            resultados = json.load(resposta)
+        if resultados:
+            farmacia.latitude = resultados[0].get("lat")
+            farmacia.longitude = resultados[0].get("lon")
+        else:
+            farmacia.latitude = farmacia.longitude = None
+            flash("Endereço não localizado. Ajuste o pino no mapa.", "error")
+    except (OSError, ValueError, TypeError) as error:
+        current_app.logger.warning("Falha ao geocodificar farmacia_id=%s: %s", farmacia.id, error)
+        flash("Não foi possível localizar o endereço automaticamente. Ajuste o pino no mapa.", "error")
 
 
 @central_bp.get("/")
@@ -237,6 +261,7 @@ def clientes():
 @role_required("admin")
 def cliente_detalhe(farmacia_id: int):
     farmacia = Farmacia.query.get_or_404(farmacia_id)
+    clientes_farmacia = Cliente.query.filter_by(farmacia_id=farmacia.id).order_by(Cliente.nome).all()
     data_de = request.args.get("de", "")
     data_ate = request.args.get("ate", "")
     try:
@@ -262,6 +287,8 @@ def cliente_detalhe(farmacia_id: int):
         mostrar_canceladas=request.args.get("mostrar_canceladas") == "1",
         erro=erro,
         brl=brl,
+        clientes_farmacia=clientes_farmacia,
+        mask_cpf=mask_cpf,
     )
 
 
@@ -332,6 +359,7 @@ def _criar_farmacia():
         farmacia = Farmacia(user=user, **{chave: campos[chave] for chave in (
             "razao_social", "cnpj_cpf", "endereco_fixo", "cidade", "uf", "telefone", "responsavel_financeiro"
         )})
+        _geocodificar_farmacia(farmacia)
         db.session.add_all([user, farmacia])
         db.session.commit()
         flash("Farmácia criada com sucesso.", "success")
@@ -380,8 +408,28 @@ def _atualizar_farmacia(farmacia: Farmacia):
         return
     for campo, valor in dados.items():
         setattr(farmacia, campo, valor)
+    _geocodificar_farmacia(farmacia)
     db.session.commit()
     flash("Farmácia atualizada.", "success")
+
+
+@central_bp.post("/farmacias/<int:farmacia_id>/posicao")
+@role_required("admin")
+def salvar_posicao_farmacia(farmacia_id: int):
+    farmacia = Farmacia.query.get_or_404(farmacia_id)
+    try:
+        latitude = Decimal(request.form.get("latitude", ""))
+        longitude = Decimal(request.form.get("longitude", ""))
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            raise InvalidOperation
+    except (InvalidOperation, ValueError):
+        flash("Informe uma posição válida no mapa.", "error")
+        return redirect(url_for("central.farmacias"))
+    farmacia.latitude = latitude
+    farmacia.longitude = longitude
+    db.session.commit()
+    flash("Posição da farmácia salva.", "success")
+    return redirect(url_for("central.farmacias"))
 
 
 def _resetar_senha(user: User):

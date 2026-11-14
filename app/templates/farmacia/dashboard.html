@@ -7,7 +7,7 @@
       <h1 class="text-2xl font-bold">{{ farmacia.razao_social }}</h1>
       <p class="text-slate-600">Nova entrega e entregas em andamento</p>
     </div>
-    <a href="{{ url_for('farmacia.historico') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Histórico</a>
+    <div class="flex gap-2"><a href="{{ url_for('farmacia.clientes') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold">Meus clientes</a><a href="{{ url_for('farmacia.historico') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Histórico</a></div>
   </div>
 
   {% if not bairros %}
@@ -25,10 +25,17 @@
     <h2 class="mb-4 text-xl font-bold">Nova entrega</h2>
     <form method="post" action="{{ url_for('farmacia.nova_entrega') }}" class="grid gap-4 md:grid-cols-2">
       {{ form.hidden_tag() }}
+      <div class="md:col-span-2">
+        {{ form.cpf_cliente.label(class="mb-1 block text-sm font-medium") }}
+        {{ form.cpf_cliente(class="w-full rounded-lg border border-slate-300 px-3 py-2", id="cpf-cliente", inputmode="numeric", autocomplete="off") }}
+        <p class="mt-1 text-xs text-slate-500">O CPF é usado para identificar o cliente nos próximos pedidos.</p>
+        <p id="cliente-aviso" class="mt-1 text-sm text-slate-600"></p>
+      </div>
       {% for field in [form.nome_cliente, form.telefone_cliente, form.endereco_entrega] %}
         <div {% if field.name == 'endereco_entrega' %}class="md:col-span-2"{% endif %}>
           {{ field.label(class="mb-1 block text-sm font-medium") }}
           {{ field(class="w-full rounded-lg border border-slate-300 px-3 py-2", placeholder=field.label.text) }}
+          {% if field.name == 'endereco_entrega' %}<select id="outros-enderecos" class="mt-2 hidden w-full rounded-lg border border-slate-300 px-3 py-2" aria-label="Outros endereços deste cliente"></select><button id="limpar-endereco" type="button" class="mt-1 hidden text-sm text-slate-600 underline">Limpar endereço preenchido</button>{% endif %}
           {% for error in field.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
         </div>
       {% endfor %}
@@ -92,6 +99,30 @@ const bairroSelect = document.getElementById('bairro-entrega');
 const taxa = document.getElementById('taxa-bairro');
 const troco = document.getElementById('precisa-troco');
 const campoTroco = document.getElementById('campo-troco');
+const cpfCliente = document.getElementById('cpf-cliente');
+const clienteAviso = document.getElementById('cliente-aviso');
+let buscaCliente;
+function mascararCpf(valor) { const digits = valor.replace(/\D/g, '').slice(0, 11); return digits.length > 9 ? `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}` : digits; }
+function preencherCliente(data) {
+  if (!data.encontrado) { clienteAviso.textContent = 'Cliente novo'; return; }
+  clienteAviso.textContent = 'Dados do último pedido. Confira antes de salvar.';
+  document.getElementById('nome_cliente').value = data.nome || '';
+  document.getElementById('telefone_cliente').value = data.telefone || '';
+  const enderecos = data.enderecos || [];
+  window.enderecosCliente = enderecos;
+  const outros = document.getElementById('outros-enderecos');
+  outros.innerHTML = '<option value="">Outros endereços deste cliente</option>' + enderecos.map((item, index) => `<option value="${index}">${item.endereco} - ${item.bairro}</option>`).join('');
+  outros.classList.toggle('hidden', enderecos.length < 2);
+  document.getElementById('limpar-endereco').classList.toggle('hidden', !enderecos.length);
+  if (enderecos.length) {
+    document.getElementById('endereco_entrega').value = enderecos[0].endereco;
+    bairroSelect.value = bairros.includes(enderecos[0].bairro) ? enderecos[0].bairro : '';
+    atualizarTaxa();
+  }
+  document.getElementById('outros-enderecos')?.addEventListener('change', event => { const item = window.enderecosCliente?.[Number(event.target.value)]; if (!item) return; document.getElementById('endereco_entrega').value = item.endereco; bairroSelect.value = bairros.includes(item.bairro) ? item.bairro : ''; atualizarTaxa(); });
+  document.getElementById('limpar-endereco')?.addEventListener('click', () => { document.getElementById('endereco_entrega').value = ''; bairroSelect.value = ''; atualizarTaxa(); });
+}
+cpfCliente?.addEventListener('input', () => { cpfCliente.value = mascararCpf(cpfCliente.value); clearTimeout(buscaCliente); if (cpfCliente.value.replace(/\D/g, '').length === 11) buscaCliente = setTimeout(async () => { try { const response = await fetch(`{{ url_for('farmacia.buscar_cliente') }}?cpf=${encodeURIComponent(cpfCliente.value)}`); preencherCliente(await response.json()); } catch (_) { clienteAviso.textContent = 'Não foi possível buscar o cliente.'; } }, 250); });
 function atualizarTaxa() { taxa.textContent = taxas[bairroSelect.value] || 'Selecione um bairro'; }
 function atualizarTroco() { campoTroco.classList.toggle('hidden', !troco.checked); }
 bairroSelect?.addEventListener('change', atualizarTaxa);

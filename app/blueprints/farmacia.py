@@ -7,10 +7,12 @@ from flask_login import current_user
 from app.decorators import role_required
 from app.extensions import db
 from app.forms import EntregaForm
-from app.models import BairroPreco, Entrega, Farmacia
+from app.models import BairroPreco, Cliente, EnderecoCliente, Entrega, Farmacia
 from app.report import brl, delivered_query, history_query, parse_report_dates
+from app.utils.validators import mask_cpf, normalize_cpf, normalize_phone, normalize_text
 
 farmacia_bp = Blueprint("farmacia", __name__)
+_busca_rate_limit: dict[str, list[datetime]] = {}
 
 
 @farmacia_bp.get("/")
@@ -47,11 +49,38 @@ def nova_entrega():
             flash("Bairro não cadastrado. Solicite à Central", "error")
             return redirect(url_for("farmacia.dashboard"))
 
+        try:
+            cpf = normalize_cpf(form.cpf_cliente.data)
+            telefone = normalize_phone(form.telefone_cliente.data)
+        except ValueError as error:
+            flash(str(error), "error")
+            return redirect(url_for("farmacia.dashboard"))
+        cliente = Cliente.query.filter_by(farmacia_id=farmacia.id, cpf=cpf).first()
+        if cliente is None:
+            cliente = Cliente(farmacia_id=farmacia.id, cpf=cpf)
+            db.session.add(cliente)
+        cliente.nome = form.nome_cliente.data.strip()
+        cliente.telefone = telefone
+        endereco = form.endereco_entrega.data.strip()
+        endereco_normalizado = normalize_text(endereco)
+        endereco_cliente = next(
+            (item for item in cliente.enderecos if item.ativo and normalize_text(item.endereco) == endereco_normalizado
+             and normalize_text(item.bairro) == normalize_text(bairro_preco.bairro)),
+            None,
+        )
+        if endereco_cliente is None:
+            endereco_cliente = EnderecoCliente(
+                cliente=cliente, endereco=endereco, bairro=bairro_preco.bairro, ultimo_uso=datetime.utcnow()
+            )
+            db.session.add(endereco_cliente)
+        else:
+            endereco_cliente.ultimo_uso = datetime.utcnow()
         entrega = Entrega(
             farmacia_id=farmacia.id,
+            cliente=cliente,
             nome_cliente=form.nome_cliente.data.strip(),
-            telefone_cliente=_telefone_normalizado(form.telefone_cliente.data),
-            endereco_entrega=form.endereco_entrega.data.strip(),
+            telefone_cliente=telefone,
+            endereco_entrega=endereco,
             bairro_entrega=bairro_preco.bairro,
             valor_taxa=Decimal(bairro_preco.valor_taxa),
             precisa_troco=form.precisa_troco.data,
@@ -83,6 +112,120 @@ def andamento_json():
     farmacia = _farmacia_logada()
     entregas = _entregas_andamento(farmacia.id)
     return jsonify({"entregas": [_entrega_json(entrega) for entrega in entregas]})
+
+
+@farmacia_bp.get("/api/clientes/buscar")
+@role_required("farmacia")
+def buscar_cliente():
+    farmacia = _farmacia_logada()
+    agora = datetime.utcnow()
+    chave = request.remote_addr or "desconhecido"
+    tentativas = [momento for momento in _busca_rate_limit.get(chave, []) if (agora - momento).total_seconds() < 60]
+    if len(tentativas) >= 30:
+        return jsonify({"mensagem": "Muitas consultas. Tente novamente em instantes."}), 429
+    tentativas.append(agora)
+    _busca_rate_limit[chave] = tentativas
+    try:
+        cpf = normalize_cpf(request.args.get("cpf", ""))
+    except ValueError:
+        return jsonify({"encontrado": False}), 400
+    cliente = Cliente.query.filter_by(farmacia_id=farmacia.id, cpf=cpf).first()
+    if cliente is None:
+        return jsonify({"encontrado": False, "mensagem": "Cliente novo"})
+    enderecos = sorted((item for item in cliente.enderecos if item.ativo), key=lambda item: item.ultimo_uso, reverse=True)
+    return jsonify({
+        "encontrado": True,
+        "cpf": mask_cpf(cliente.cpf),
+        "nome": cliente.nome,
+        "telefone": cliente.telefone,
+        "enderecos": [
+            {"id": item.id, "endereco": item.endereco, "bairro": item.bairro, "complemento": item.complemento}
+            for item in enderecos
+        ],
+    })
+
+
+@farmacia_bp.get("/clientes")
+@role_required("farmacia")
+def clientes():
+    farmacia = _farmacia_logada()
+    busca = request.args.get("busca", "").strip()
+    query = Cliente.query.filter_by(farmacia_id=farmacia.id)
+    if busca:
+        termo = f"%{busca}%"
+        query = query.filter((Cliente.nome.ilike(termo)) | (Cliente.telefone.ilike(termo)) | (Cliente.cpf.ilike(termo)))
+    return render_template("farmacia/clientes.html", clientes=query.order_by(Cliente.nome).all(), busca=busca, mask_cpf=mask_cpf)
+
+
+@farmacia_bp.post("/clientes/<int:cliente_id>/editar")
+@role_required("farmacia")
+def editar_cliente(cliente_id: int):
+    farmacia = _farmacia_logada()
+    cliente = Cliente.query.filter_by(id=cliente_id, farmacia_id=farmacia.id).first_or_404()
+    try:
+        cliente.cpf = normalize_cpf(request.form.get("cpf", cliente.cpf))
+        cliente.telefone = normalize_phone(request.form.get("telefone", cliente.telefone))
+    except ValueError as error:
+        flash(str(error), "error")
+        return redirect(url_for("farmacia.clientes"))
+    cliente.nome = request.form.get("nome", "").strip()
+    if not cliente.nome or Cliente.query.filter(
+        Cliente.farmacia_id == farmacia.id, Cliente.cpf == cliente.cpf, Cliente.id != cliente.id
+    ).first():
+        flash("Nome obrigatório ou CPF já cadastrado nesta farmácia.", "error")
+        return redirect(url_for("farmacia.clientes"))
+    db.session.commit()
+    flash("Cliente atualizado.", "success")
+    return redirect(url_for("farmacia.clientes"))
+
+
+@farmacia_bp.post("/clientes/<int:cliente_id>/enderecos")
+@role_required("farmacia")
+def adicionar_endereco(cliente_id: int):
+    farmacia = _farmacia_logada()
+    cliente = Cliente.query.filter_by(id=cliente_id, farmacia_id=farmacia.id).first_or_404()
+    endereco = request.form.get("endereco", "").strip()
+    bairro = request.form.get("bairro", "").strip()
+    if not endereco or not bairro:
+        flash("Endereço e bairro são obrigatórios.", "error")
+        return redirect(url_for("farmacia.clientes"))
+    existente = next((item for item in cliente.enderecos if normalize_text(item.endereco) == normalize_text(endereco) and normalize_text(item.bairro) == normalize_text(bairro)), None)
+    if existente:
+        existente.ativo = True
+        existente.ultimo_uso = datetime.utcnow()
+    else:
+        db.session.add(EnderecoCliente(cliente=cliente, endereco=endereco, bairro=bairro, complemento=request.form.get("complemento", "").strip() or None))
+    db.session.commit()
+    return redirect(url_for("farmacia.clientes"))
+
+
+@farmacia_bp.post("/clientes/<int:cliente_id>/enderecos/<int:endereco_id>/desativar")
+@role_required("farmacia")
+def desativar_endereco(cliente_id: int, endereco_id: int):
+    farmacia = _farmacia_logada()
+    endereco = EnderecoCliente.query.join(Cliente).filter(
+        EnderecoCliente.id == endereco_id, EnderecoCliente.cliente_id == cliente_id, Cliente.farmacia_id == farmacia.id
+    ).first_or_404()
+    endereco.ativo = False
+    db.session.commit()
+    return redirect(url_for("farmacia.clientes"))
+
+
+@farmacia_bp.post("/clientes/<int:cliente_id>/enderecos/<int:endereco_id>/editar")
+@role_required("farmacia")
+def editar_endereco(cliente_id: int, endereco_id: int):
+    farmacia = _farmacia_logada()
+    endereco = EnderecoCliente.query.join(Cliente).filter(
+        EnderecoCliente.id == endereco_id, EnderecoCliente.cliente_id == cliente_id, Cliente.farmacia_id == farmacia.id
+    ).first_or_404()
+    endereco.endereco = request.form.get("endereco", "").strip()
+    endereco.bairro = request.form.get("bairro", "").strip()
+    endereco.complemento = request.form.get("complemento", "").strip() or None
+    if not endereco.endereco or not endereco.bairro:
+        flash("Endereço e bairro são obrigatórios.", "error")
+    else:
+        db.session.commit()
+    return redirect(url_for("farmacia.clientes"))
 
 
 @farmacia_bp.get("/historico")
@@ -142,7 +285,7 @@ def _entregas_andamento(farmacia_id: int) -> list[Entrega]:
 
 
 def _telefone_normalizado(telefone: str) -> str:
-    return "".join(char for char in telefone if char.isdigit())
+    return normalize_phone(telefone)
 
 
 def _parse_date(value: str | None):

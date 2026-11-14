@@ -19,6 +19,7 @@ class LoginForm(FlaskForm):
 
 
 class EntregaForm(FlaskForm):
+    cpf_cliente = StringField("CPF do cliente", validators=[DataRequired(message="Informe o CPF do cliente.")])
     nome_cliente = StringField("Nome do cliente", validators=[DataRequired(message="Informe o nome do cliente."), Length(max=150)])
     telefone_cliente = StringField("Telefone", validators=[DataRequired(message="Informe o telefone."), Length(max=30)])
     endereco_entrega = StringField("Endereço de entrega", validators=[DataRequired(message="Informe o endereço."), Length(max=300)])
@@ -34,9 +35,18 @@ class EntregaForm(FlaskForm):
     submit = SubmitField("Cadastrar entrega")
 
     def validate_telefone_cliente(self, field: StringField) -> None:
-        digits = re.sub(r"\D", "", field.data or "")
-        if len(digits) not in (10, 11):
-            raise ValidationError("Informe um telefone válido com DDD.")
+        from app.utils.validators import normalize_phone
+        try:
+            normalize_phone(field.data)
+        except ValueError as error:
+            raise ValidationError(str(error)) from error
+
+    def validate_cpf_cliente(self, field: StringField) -> None:
+        from app.utils.validators import normalize_cpf
+        try:
+            field.data = normalize_cpf(field.data)
+        except ValueError as error:
+            raise ValidationError(str(error)) from error
 
     def validate_valor_troco(self, field: DecimalField) -> None:
         if self.precisa_troco.data and field.data is None:

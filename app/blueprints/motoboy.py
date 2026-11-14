@@ -183,6 +183,8 @@ def _motoboy_logado() -> Motoboy:
 
 
 def _praca_json(entrega: Entrega) -> dict:
+    farmacia = entrega.farmacia
+    endereco = ", ".join(filter(None, (farmacia.endereco_fixo, farmacia.cidade, farmacia.uf)))
     return {
         "id": entrega.id,
         "bairro": entrega.bairro_entrega,
@@ -191,11 +193,14 @@ def _praca_json(entrega: Entrega) -> dict:
         "valor_troco": f"{entrega.valor_troco:.2f}" if entrega.valor_troco is not None else None,
         "usa_maquininha": entrega.usa_maquininha,
         "farmacia": entrega.farmacia.razao_social,
+        "farmacia_endereco": endereco,
+        "farmacia_latitude": float(farmacia.latitude) if farmacia.latitude is not None else None,
+        "farmacia_longitude": float(farmacia.longitude) if farmacia.longitude is not None else None,
     }
 
 
 def _ativa_json(entrega: Entrega) -> dict:
-    endereco = ", ".join(
+    endereco_cliente = ", ".join(
         valor for valor in (
             entrega.endereco_entrega,
             entrega.bairro_entrega,
@@ -203,11 +208,25 @@ def _ativa_json(entrega: Entrega) -> dict:
             entrega.farmacia.uf,
         ) if valor
     )
-    destino = quote(endereco, safe="")
+    farmacia = entrega.farmacia
+    endereco_farmacia = ", ".join(filter(None, (farmacia.endereco_fixo, farmacia.cidade, farmacia.uf)))
+    destino_farmacia = (
+        f"{farmacia.latitude},{farmacia.longitude}"
+        if farmacia.latitude is not None and farmacia.longitude is not None
+        else endereco_farmacia
+    )
+    destino_cliente = endereco_cliente
+    destino_principal = destino_farmacia if entrega.status == "aceita" else destino_cliente
+    principal = quote(destino_principal, safe="")
+    farmacia_destino = quote(destino_farmacia, safe="")
+    cliente_destino = quote(destino_cliente, safe="")
     return {
         "id": entrega.id,
         "status": entrega.status,
         "farmacia": entrega.farmacia.razao_social,
+        "farmacia_endereco": endereco_farmacia,
+        "farmacia_latitude": float(farmacia.latitude) if farmacia.latitude is not None else None,
+        "farmacia_longitude": float(farmacia.longitude) if farmacia.longitude is not None else None,
         "nome_cliente": entrega.nome_cliente,
         "telefone_cliente": entrega.telefone_cliente,
         "endereco_entrega": entrega.endereco_entrega,
@@ -219,11 +238,16 @@ def _ativa_json(entrega: Entrega) -> dict:
         "observacoes": entrega.observacoes,
         "data_aceite": entrega.data_aceite.isoformat() if entrega.data_aceite else None,
         "data_coleta": entrega.data_coleta.isoformat() if entrega.data_coleta else None,
-        "endereco_completo": endereco,
+        "endereco_completo": endereco_cliente,
+        "destino_farmacia": destino_farmacia,
         "mapas": {
-            "google": f"https://www.google.com/maps/dir/?api=1&destination={destino}&travelmode=driving",
-            "waze": f"https://waze.com/ul?q={destino}&navigate=yes",
-            "apple": f"https://maps.apple.com/?daddr={destino}",
+            "google": f"https://www.google.com/maps/dir/?api=1&destination={principal}&travelmode=driving",
+            "waze": f"https://waze.com/ul?q={principal}&navigate=yes",
+            "apple": f"https://maps.apple.com/?daddr={principal}",
+            "google_farmacia_cliente": (
+                "https://www.google.com/maps/dir/?api=1"
+                f"&destination={cliente_destino}&waypoints={farmacia_destino}&travelmode=driving"
+            ),
         },
     }
 

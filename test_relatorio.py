@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from app import create_app
 from app.extensions import db
-from app.models import Entrega, Farmacia, User
+from app.models import Cliente, Entrega, Farmacia, User
 from app.report import cancelled_data, report_data, subtotal_data, summary_data
 
 
@@ -32,9 +32,18 @@ with app.app_context():
     )
     db.session.add(farmacia)
     db.session.flush()
+    cliente = Cliente(
+        farmacia_id=farmacia.id,
+        cpf="52998224725",
+        nome="Cliente Teste",
+        telefone="11999999999",
+    )
+    db.session.add(cliente)
+    db.session.flush()
     entregas = [
         Entrega(
             farmacia_id=farmacia.id,
+            cliente_id=cliente.id,
             nome_cliente="Ana Silva",
             telefone_cliente="11999999999",
             endereco_entrega="Rua",
@@ -45,6 +54,7 @@ with app.app_context():
         ),
         Entrega(
             farmacia_id=farmacia.id,
+            cliente_id=cliente.id,
             nome_cliente="Bruno Souza",
             telefone_cliente="11999999999",
             endereco_entrega="Rua",
@@ -55,6 +65,7 @@ with app.app_context():
         ),
         Entrega(
             farmacia_id=farmacia.id,
+            cliente_id=cliente.id,
             nome_cliente="Carla Lima",
             telefone_cliente="11999999999",
             endereco_entrega="Rua",
@@ -65,6 +76,7 @@ with app.app_context():
         ),
         Entrega(
             farmacia_id=farmacia.id,
+            cliente_id=cliente.id,
             nome_cliente="Cancelada",
             telefone_cliente="11999999999",
             endereco_entrega="Rua",
