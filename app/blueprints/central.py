@@ -11,6 +11,19 @@ from werkzeug.security import generate_password_hash
 from app.decorators import role_required
 from app.extensions import db
 from app.models import BairroPreco, Entrega, Farmacia, Motoboy, User
+from app.report import (
+    brl,
+    cancelled_data,
+    delivered_query,
+    history_query,
+    parse_report_dates,
+    period_bounds,
+    report_data,
+    safe_filename,
+    subtotal_data,
+    summary_data,
+)
+from app.report import SAO_PAULO
 
 central_bp = Blueprint("central", __name__)
 ATIVOS = ("pendente", "aceita", "coletada")
@@ -197,30 +210,83 @@ def clientes():
 @role_required("admin")
 def cliente_detalhe(farmacia_id: int):
     farmacia = Farmacia.query.get_or_404(farmacia_id)
-    data_de = _parse_date(request.args.get("de"))
-    data_ate = _parse_date(request.args.get("ate"))
-    query = Entrega.query.filter(
-        Entrega.farmacia_id == farmacia.id,
-        Entrega.status.in_(("entregue", "cancelada")),
-    )
-    query = _filtrar_periodo(query, data_de, data_ate)
+    data_de = request.args.get("de", "")
+    data_ate = request.args.get("ate", "")
+    try:
+        inicio, fim = parse_report_dates(data_de, data_ate)
+        query = history_query(farmacia.id, inicio, fim, request.args.get("mostrar_canceladas") == "1")
+        total_query = delivered_query(farmacia.id, inicio, fim)
+        total = sum((entrega.valor_taxa for entrega in total_query.all()), Decimal("0.00"))
+        erro = None
+    except ValueError as error:
+        query = Entrega.query.filter(False)
+        total = Decimal("0.00")
+        erro = str(error) if data_de or data_ate else None
     pagination = query.order_by(Entrega.data_criacao.desc()).paginate(
         page=request.args.get("page", 1, type=int), per_page=20, error_out=False
     )
-    total_query = _filtrar_periodo(
-        Entrega.query.filter(Entrega.farmacia_id == farmacia.id, Entrega.status == "entregue"),
-        data_de,
-        data_ate,
-    )
-    total = sum((entrega.valor_taxa for entrega in total_query.all()), Decimal("0.00"))
     return render_template(
         "central/cliente_detalhe.html",
         farmacia=farmacia,
         pagination=pagination,
         total=total,
-        data_de=request.args.get("de", ""),
-        data_ate=request.args.get("ate", ""),
+        data_de=data_de,
+        data_ate=data_ate,
+        mostrar_canceladas=request.args.get("mostrar_canceladas") == "1",
+        erro=erro,
+        brl=brl,
     )
+
+
+@central_bp.get("/clientes/<int:farmacia_id>/relatorio.pdf")
+@role_required("admin")
+def relatorio_pdf(farmacia_id: int):
+    farmacia = Farmacia.query.get_or_404(farmacia_id)
+    try:
+        inicio, fim = parse_report_dates(request.args.get("de"), request.args.get("ate"))
+    except ValueError as error:
+        abort(400, description=str(error))
+    entregas = delivered_query(farmacia.id, inicio, fim).order_by(Entrega.data_entrega.asc()).all()
+    _, fim_utc = period_bounds(inicio, fim)
+    inicio_utc, _ = period_bounds(inicio, fim)
+    canceladas = Entrega.query.filter(
+        Entrega.farmacia_id == farmacia.id,
+        Entrega.status == "cancelada",
+        Entrega.data_cancelamento.is_not(None),
+        Entrega.data_cancelamento >= inicio_utc,
+        Entrega.data_cancelamento < fim_utc,
+    ).order_by(Entrega.data_cancelamento.asc()).all()
+    rows, total = report_data(entregas)
+    try:
+        from flask import make_response
+        from weasyprint import HTML
+        from flask import render_template
+
+        html = render_template(
+            "central/relatorio.html",
+            farmacia=farmacia,
+            inicio=inicio,
+            fim=fim,
+            emitido=datetime.now(SAO_PAULO),
+            rows=rows,
+            subtotais=subtotal_data(entregas),
+            total=total,
+            brl=brl,
+            resumo=summary_data(entregas, canceladas),
+            canceladas=cancelled_data(canceladas),
+            detalhado=request.args.get("detalhado") == "1",
+        )
+        response = make_response(HTML(string=html).write_pdf())
+    except ImportError as error:
+        abort(500, description="WeasyPrint não está instalado. Instale as dependências do requirements.txt.")
+    except OSError as error:
+        abort(500, description="As bibliotecas do sistema do WeasyPrint não estão instaladas.")
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = (
+        f"attachment; filename=relatorio_{safe_filename(farmacia.razao_social)}_"
+        f"{inicio.isoformat()}_{fim.isoformat()}.pdf"
+    )
+    return response
 
 
 def _criar_farmacia():

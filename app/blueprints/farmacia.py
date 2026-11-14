@@ -8,6 +8,7 @@ from app.decorators import role_required
 from app.extensions import db
 from app.forms import EntregaForm
 from app.models import BairroPreco, Entrega, Farmacia
+from app.report import brl, delivered_query, history_query, parse_report_dates
 
 farmacia_bp = Blueprint("farmacia", __name__)
 
@@ -89,35 +90,30 @@ def andamento_json():
 def historico():
     farmacia = _farmacia_logada()
     page = request.args.get("page", 1, type=int)
-    data_de = _parse_date(request.args.get("de"))
-    data_ate = _parse_date(request.args.get("ate"))
-    query = Entrega.query.filter(
-        Entrega.farmacia_id == farmacia.id,
-        Entrega.status.in_(("entregue", "cancelada")),
-    )
-    if data_de:
-        query = query.filter(Entrega.data_criacao >= datetime.combine(data_de, time.min))
-    if data_ate:
-        query = query.filter(Entrega.data_criacao < datetime.combine(data_ate + timedelta(days=1), time.min))
-
+    data_de = request.args.get("de", "")
+    data_ate = request.args.get("ate", "")
+    mostrar_canceladas = request.args.get("mostrar_canceladas") == "1"
+    erro = None
+    try:
+        inicio, fim = parse_report_dates(data_de, data_ate)
+        query = history_query(farmacia.id, inicio, fim, mostrar_canceladas)
+        total_query = delivered_query(farmacia.id, inicio, fim)
+        total = sum((entrega.valor_taxa for entrega in total_query.all()), Decimal("0.00"))
+    except ValueError as error:
+        query = Entrega.query.filter(False)
+        total = Decimal("0.00")
+        erro = str(error) if data_de or data_ate else None
     pagination = query.order_by(Entrega.data_criacao.desc()).paginate(page=page, per_page=20, error_out=False)
-    total_query = Entrega.query.filter(
-        Entrega.farmacia_id == farmacia.id,
-        Entrega.status == "entregue",
-    )
-    if data_de:
-        total_query = total_query.filter(Entrega.data_criacao >= datetime.combine(data_de, time.min))
-    if data_ate:
-        total_query = total_query.filter(Entrega.data_criacao < datetime.combine(data_ate + timedelta(days=1), time.min))
-    total = sum((entrega.valor_taxa for entrega in total_query.all()), Decimal("0.00"))
-
     return render_template(
         "farmacia/historico.html",
         farmacia=farmacia,
         pagination=pagination,
         total=total,
-        data_de=request.args.get("de", ""),
-        data_ate=request.args.get("ate", ""),
+        data_de=data_de,
+        data_ate=data_ate,
+        mostrar_canceladas=mostrar_canceladas,
+        erro=erro,
+        brl=brl,
     )
 
 
