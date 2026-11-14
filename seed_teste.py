@@ -29,11 +29,16 @@ def main() -> None:
                 razao_social="Farmácia Teste",
                 cnpj_cpf="00.000.000/0001-00",
                 endereco_fixo="Rua de Teste, 100",
+                cidade="Itajaí",
+                uf="SC",
                 telefone="11999999999",
                 responsavel_financeiro="Responsável Teste",
             )
             db.session.add(farmacia)
             db.session.flush()
+        else:
+            farmacia.cidade = farmacia.cidade or "Itajaí"
+            farmacia.uf = farmacia.uf or "SC"
 
         for bairro, valor in (("Centro", "8.00"), ("Jardins", "10.00"), ("Vila Nova", "12.50")):
             if not BairroPreco.query.filter_by(farmacia_id=farmacia.id, bairro=bairro).first():

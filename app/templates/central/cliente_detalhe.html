@@ -7,7 +7,7 @@
     <a href="{{ url_for('central.clientes') }}" class="rounded border bg-white px-3 py-2">Voltar</a>
   </div>
   <div class="rounded-xl bg-white p-4 shadow-sm">
-    <p>{{ farmacia.cnpj_cpf }} · {{ farmacia.endereco_fixo }} · {{ farmacia.telefone }}</p>
+    <p>{{ farmacia.cnpj_cpf }} · {{ farmacia.endereco_fixo }} · {{ farmacia.cidade }}/{{ farmacia.uf }} · {{ farmacia.telefone }}</p>
     <p class="text-sm text-slate-600">Responsável financeiro: {{ farmacia.responsavel_financeiro }}</p>
     <h2 class="mt-4 font-bold">Tabela de preços</h2>
     <p class="text-sm text-slate-600">{% for b in farmacia.bairros_precos %}{{ b.bairro }} (R$ {{ '%.2f'|format(b.valor_taxa) }}){% if not loop.last %} · {% endif %}{% endfor %}</p>

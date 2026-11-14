@@ -1,8 +1,60 @@
 {% extends "central/base.html" %}
 {% block title %}Farmácias - Central{% endblock %}
 {% block central_content %}
-<div class="space-y-5"><h1 class="text-2xl font-bold">Farmácias</h1>
-<form method="post" class="grid gap-3 rounded-xl bg-white p-4 shadow-sm sm:grid-cols-2">{% for name, label in [('username','Username'),('password','Senha inicial'),('razao_social','Razão social'),('cnpj_cpf','CNPJ/CPF'),('endereco_fixo','Endereço'),('telefone','Telefone'),('responsavel_financeiro','Responsável financeiro')] %}<input name="{{ name }}" type="{{ 'password' if name == 'password' else 'text' }}" placeholder="{{ label }}" class="rounded-lg border px-3 py-2" required>{% endfor %}<button class="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white sm:col-span-2">Criar farmácia</button><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
-<form class="flex gap-2"><input name="busca" value="{{ busca }}" placeholder="Buscar username ou razão social" class="flex-1 rounded-lg border px-3 py-2"><button class="rounded-lg border bg-white px-4 py-2">Buscar</button></form>
-{% for f in farmacias %}<article class="space-y-3 rounded-xl bg-white p-4 shadow-sm"><div class="flex justify-between"><strong>{{ f.razao_social }}</strong><span class="text-sm {{ 'text-green-700' if f.user.ativo else 'text-red-700' }}">{{ 'Ativa' if f.user.ativo else 'Desativada' }}</span></div><p class="text-sm text-slate-600">Usuário: {{ f.user.username }}</p><form method="post" action="{{ url_for('central.editar_farmacia', farmacia_id=f.id) }}" class="grid gap-2 sm:grid-cols-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input name="razao_social" value="{{ f.razao_social }}" class="rounded border px-2 py-2"><input name="cnpj_cpf" value="{{ f.cnpj_cpf }}" class="rounded border px-2 py-2"><input name="endereco_fixo" value="{{ f.endereco_fixo }}" class="rounded border px-2 py-2"><input name="telefone" value="{{ f.telefone }}" class="rounded border px-2 py-2"><input name="responsavel_financeiro" value="{{ f.responsavel_financeiro }}" class="rounded border px-2 py-2"><button class="rounded bg-indigo-600 px-3 py-2 text-white">Salvar dados</button></form><div class="flex flex-wrap gap-2"><form method="post" action="{{ url_for('central.status_farmacia', farmacia_id=f.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="button" data-confirm-action="{{ url_for('central.status_farmacia', farmacia_id=f.id) }}" data-confirm-message="{{ 'Desativar esta farmácia?' if f.user.ativo else 'Ativar esta farmácia?' }}" class="rounded bg-amber-600 px-3 py-2 text-white">{{ 'Desativar' if f.user.ativo else 'Ativar' }}</button></form><form method="post" action="{{ url_for('central.resetar_senha_farmacia', farmacia_id=f.id) }}" class="flex gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input name="password" minlength="8" placeholder="Nova senha" class="rounded border px-2"><button class="rounded bg-slate-700 px-3 py-2 text-white">Resetar senha</button></form></div></article>{% endfor %}</div>
+<div class="space-y-5">
+  <h1 class="text-2xl font-bold">Farmácias</h1>
+  <form method="post" class="grid gap-3 rounded-xl bg-white p-4 shadow-sm sm:grid-cols-2" data-localidade-form>
+    <div><label for="novo-username" class="mb-1 block text-sm font-medium">Username</label><input id="novo-username" name="username" class="w-full rounded-lg border px-3 py-2" required></div>
+    <div><label for="nova-senha" class="mb-1 block text-sm font-medium">Senha inicial</label><input id="nova-senha" name="password" type="password" minlength="8" class="w-full rounded-lg border px-3 py-2" required></div>
+    <div><label for="nova-razao" class="mb-1 block text-sm font-medium">Razão social</label><input id="nova-razao" name="razao_social" class="w-full rounded-lg border px-3 py-2" required></div>
+    <div><label for="novo-cnpj" class="mb-1 block text-sm font-medium">CNPJ/CPF</label><input id="novo-cnpj" name="cnpj_cpf" class="w-full rounded-lg border px-3 py-2" required></div>
+    <div><label for="novo-endereco" class="mb-1 block text-sm font-medium">Endereço</label><input id="novo-endereco" name="endereco_fixo" class="w-full rounded-lg border px-3 py-2" required></div>
+    <div><label for="nova-cidade" class="mb-1 block text-sm font-medium">Município</label><input id="nova-cidade" name="cidade" list="municipios-novo" value="Itajaí" class="w-full rounded-lg border px-3 py-2" required><datalist id="municipios-novo"></datalist></div>
+    <div><label for="novo-uf" class="mb-1 block text-sm font-medium">UF</label><select id="novo-uf" name="uf" data-valor="SC" class="w-full rounded-lg border px-3 py-2" required></select></div>
+    <div><label for="novo-telefone" class="mb-1 block text-sm font-medium">Telefone</label><input id="novo-telefone" name="telefone" class="w-full rounded-lg border px-3 py-2" required></div>
+    <div><label for="novo-responsavel" class="mb-1 block text-sm font-medium">Responsável financeiro</label><input id="novo-responsavel" name="responsavel_financeiro" class="w-full rounded-lg border px-3 py-2" required></div>
+    <button class="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white sm:col-span-2">Criar farmácia</button>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+  <form class="flex gap-2"><label for="busca" class="sr-only">Buscar farmácia</label><input id="busca" name="busca" value="{{ busca }}" placeholder="Buscar username ou razão social" class="flex-1 rounded-lg border px-3 py-2"><button class="rounded-lg border bg-white px-4 py-2">Buscar</button></form>
+  {% for f in farmacias %}
+  <article class="space-y-3 rounded-xl bg-white p-4 shadow-sm">
+    <div class="flex justify-between"><strong>{{ f.razao_social }}</strong><span class="text-sm {{ 'text-green-700' if f.user.ativo else 'text-red-700' }}">{{ 'Ativa' if f.user.ativo else 'Desativada' }}</span></div>
+    <p class="text-sm text-slate-600">Usuário: {{ f.user.username }}</p>
+    <form method="post" action="{{ url_for('central.editar_farmacia', farmacia_id=f.id) }}" class="grid gap-2 sm:grid-cols-2" data-localidade-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div><label for="razao-{{ f.id }}" class="mb-1 block text-sm font-medium">Razão social</label><input id="razao-{{ f.id }}" name="razao_social" value="{{ f.razao_social }}" class="w-full rounded border px-2 py-2" required></div>
+      <div><label for="cnpj-{{ f.id }}" class="mb-1 block text-sm font-medium">CNPJ/CPF</label><input id="cnpj-{{ f.id }}" name="cnpj_cpf" value="{{ f.cnpj_cpf }}" class="w-full rounded border px-2 py-2" required></div>
+      <div><label for="endereco-{{ f.id }}" class="mb-1 block text-sm font-medium">Endereço</label><input id="endereco-{{ f.id }}" name="endereco_fixo" value="{{ f.endereco_fixo }}" class="w-full rounded border px-2 py-2" required></div>
+      <div><label for="cidade-{{ f.id }}" class="mb-1 block text-sm font-medium">Município</label><input id="cidade-{{ f.id }}" name="cidade" list="municipios-{{ f.id }}" value="{{ f.cidade }}" class="w-full rounded border px-2 py-2" required><datalist id="municipios-{{ f.id }}"></datalist></div>
+      <div><label for="uf-{{ f.id }}" class="mb-1 block text-sm font-medium">UF</label><select id="uf-{{ f.id }}" name="uf" data-valor="{{ f.uf }}" class="w-full rounded border px-2 py-2" required></select></div>
+      <div><label for="telefone-{{ f.id }}" class="mb-1 block text-sm font-medium">Telefone</label><input id="telefone-{{ f.id }}" name="telefone" value="{{ f.telefone }}" class="w-full rounded border px-2 py-2" required></div>
+      <div><label for="responsavel-{{ f.id }}" class="mb-1 block text-sm font-medium">Responsável financeiro</label><input id="responsavel-{{ f.id }}" name="responsavel_financeiro" value="{{ f.responsavel_financeiro }}" class="w-full rounded border px-2 py-2" required></div>
+      <button class="rounded bg-indigo-600 px-3 py-2 text-white">Salvar dados</button>
+    </form>
+    <div class="flex flex-wrap gap-2">
+      <form method="post" action="{{ url_for('central.status_farmacia', farmacia_id=f.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="button" data-confirm-action="{{ url_for('central.status_farmacia', farmacia_id=f.id) }}" data-confirm-message="{{ 'Desativar esta farmácia?' if f.user.ativo else 'Ativar esta farmácia?' }}" class="rounded bg-amber-600 px-3 py-2 text-white">{{ 'Desativar' if f.user.ativo else 'Ativar' }}</button></form>
+      <form method="post" action="{{ url_for('central.resetar_senha_farmacia', farmacia_id=f.id) }}" class="flex gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="senha-{{ f.id }}" class="sr-only">Nova senha</label><input id="senha-{{ f.id }}" name="password" minlength="8" placeholder="Nova senha" class="rounded border px-2"><button class="rounded bg-slate-700 px-3 py-2 text-white">Resetar senha</button></form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+<script>
+const municipiosData = {{ municipios_data|tojson }};
+function configurarLocalidade(form) {
+  const uf = form.querySelector('select[name="uf"]');
+  const cidade = form.querySelector('input[name="cidade"]');
+  const lista = form.querySelector('datalist');
+  const atual = uf.dataset.valor || 'SC';
+  uf.innerHTML = municipiosData.estados.map(estado => `<option value="${estado.sigla}">${estado.sigla} - ${estado.nome}</option>`).join('');
+  uf.value = atual;
+  function atualizarMunicipios() {
+    lista.innerHTML = (municipiosData.municipios[uf.value] || []).map(nome => `<option value="${nome}"></option>`).join('');
+    if (!(municipiosData.municipios[uf.value] || []).includes(cidade.value)) cidade.value = '';
+  }
+  uf.addEventListener('change', atualizarMunicipios);
+  atualizarMunicipios();
+}
+document.querySelectorAll('[data-localidade-form]').forEach(form => configurarLocalidade(form));
+</script>
 {% endblock %}

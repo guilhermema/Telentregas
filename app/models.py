@@ -52,6 +52,8 @@ class Farmacia(db.Model):
     razao_social = db.Column(db.String(200), nullable=False)
     cnpj_cpf = db.Column(db.String(18), nullable=False)
     endereco_fixo = db.Column(db.String(300), nullable=False)
+    cidade = db.Column(db.String(100), nullable=False, default="Itajaí", server_default="Itajaí")
+    uf = db.Column(db.String(2), nullable=False, default="SC", server_default="SC")
     telefone = db.Column(db.String(30), nullable=False)
     responsavel_financeiro = db.Column(db.String(150), nullable=False)
 

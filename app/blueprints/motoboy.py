@@ -1,4 +1,5 @@
 from datetime import datetime
+from urllib.parse import quote
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user
@@ -194,6 +195,15 @@ def _praca_json(entrega: Entrega) -> dict:
 
 
 def _ativa_json(entrega: Entrega) -> dict:
+    endereco = ", ".join(
+        valor for valor in (
+            entrega.endereco_entrega,
+            entrega.bairro_entrega,
+            entrega.farmacia.cidade,
+            entrega.farmacia.uf,
+        ) if valor
+    )
+    destino = quote(endereco, safe="")
     return {
         "id": entrega.id,
         "status": entrega.status,
@@ -209,6 +219,12 @@ def _ativa_json(entrega: Entrega) -> dict:
         "observacoes": entrega.observacoes,
         "data_aceite": entrega.data_aceite.isoformat() if entrega.data_aceite else None,
         "data_coleta": entrega.data_coleta.isoformat() if entrega.data_coleta else None,
+        "endereco_completo": endereco,
+        "mapas": {
+            "google": f"https://www.google.com/maps/dir/?api=1&destination={destino}&travelmode=driving",
+            "waze": f"https://waze.com/ul?q={destino}&navigate=yes",
+            "apple": f"https://maps.apple.com/?daddr={destino}",
+        },
     }
 
 

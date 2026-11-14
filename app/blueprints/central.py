@@ -1,7 +1,9 @@
 from datetime import datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
+import json
 import re
 import unicodedata
+from pathlib import Path
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func, update
@@ -27,6 +29,20 @@ from app.report import SAO_PAULO
 
 central_bp = Blueprint("central", __name__)
 ATIVOS = ("pendente", "aceita", "coletada")
+MUNICIPIOS_PATH = Path(__file__).resolve().parents[1] / "static" / "data" / "municipios.json"
+
+
+def _municipios_ibge() -> dict:
+    try:
+        return json.loads(MUNICIPIOS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"estados": [], "municipios": {}}
+
+
+def _localidade_valida(cidade: str, uf: str) -> bool:
+    dados = _municipios_ibge()
+    estados = {estado["sigla"] for estado in dados["estados"]}
+    return uf in estados and cidade in dados["municipios"].get(uf, [])
 
 
 @central_bp.get("/")
@@ -90,7 +106,12 @@ def farmacias():
     if busca:
         termo = f"%{busca}%"
         query = query.filter((Farmacia.razao_social.ilike(termo)) | (User.username.ilike(termo)))
-    return render_template("central/farmacias.html", farmacias=query.order_by(Farmacia.razao_social).all(), busca=busca)
+    return render_template(
+        "central/farmacias.html",
+        farmacias=query.order_by(Farmacia.razao_social).all(),
+        busca=busca,
+        municipios_data=_municipios_ibge(),
+    )
 
 
 @central_bp.post("/farmacias/<int:farmacia_id>/editar")
@@ -297,15 +318,19 @@ def relatorio_pdf(farmacia_id: int):
 
 def _criar_farmacia():
     campos = {nome: request.form.get(nome, "").strip() for nome in (
-        "username", "password", "razao_social", "cnpj_cpf", "endereco_fixo", "telefone", "responsavel_financeiro"
+        "username", "password", "razao_social", "cnpj_cpf", "endereco_fixo", "cidade", "uf", "telefone", "responsavel_financeiro"
     )}
     if not _validar_credenciais(campos):
+        return
+    campos["uf"] = campos["uf"].upper()
+    if not _localidade_valida(campos["cidade"], campos["uf"]):
+        flash("Selecione um município válido para a UF informada.", "error")
         return
     try:
         user = User(username=campos["username"], role="farmacia", ativo=True)
         user.set_password(campos["password"])
         farmacia = Farmacia(user=user, **{chave: campos[chave] for chave in (
-            "razao_social", "cnpj_cpf", "endereco_fixo", "telefone", "responsavel_financeiro"
+            "razao_social", "cnpj_cpf", "endereco_fixo", "cidade", "uf", "telefone", "responsavel_financeiro"
         )})
         db.session.add_all([user, farmacia])
         db.session.commit()
@@ -345,8 +370,16 @@ def _validar_credenciais(campos: dict) -> bool:
 
 
 def _atualizar_farmacia(farmacia: Farmacia):
-    for campo in ("razao_social", "cnpj_cpf", "endereco_fixo", "telefone", "responsavel_financeiro"):
-        setattr(farmacia, campo, request.form.get(campo, "").strip())
+    dados = {
+        campo: request.form.get(campo, "").strip()
+        for campo in ("razao_social", "cnpj_cpf", "endereco_fixo", "cidade", "uf", "telefone", "responsavel_financeiro")
+    }
+    dados["uf"] = dados["uf"].upper()
+    if not _localidade_valida(dados["cidade"], dados["uf"]):
+        flash("Selecione um município válido para a UF informada.", "error")
+        return
+    for campo, valor in dados.items():
+        setattr(farmacia, campo, valor)
     db.session.commit()
     flash("Farmácia atualizada.", "success")
 
