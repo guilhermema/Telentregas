@@ -1,7 +1,6 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
+{% extends "base.html" %}
+{% block title %}Relatório de fechamento{% endblock %}
+{% block head_extra %}
 <style>
 @page { size: {{ "A4 landscape" if detalhado else "A4" }}; margin: 18mm 14mm 18mm; @bottom-center { content: "Página " counter(page) " de " counter(pages); font-size: 9px; color: #64748b; } }
 body { font-family: sans-serif; color: #172033; font-size: 10px; }
@@ -13,8 +12,8 @@ thead { display: table-header-group; } tr { page-break-inside: avoid; } .right {
 .summary { background: #eef2ff; border: 1px solid #c7d2fe; padding: 8px 12px; }
 .summary h2 { margin-top: 0; }
 </style>
-</head>
-<body>
+{% endblock %}
+{% block page %}
 <h1>TelEntregas - Relatório de fechamento</h1>
 <p class="muted">Emitido em {{ emitido.strftime('%d/%m/%Y %H:%M') }}</p>
 <h2>Farmácia</h2>
@@ -41,5 +40,4 @@ thead { display: table-header-group; } tr { page-break-inside: avoid; } .right {
 <p>{{ resumo.canceladas }} entregas canceladas, não incluídas no total.</p>
 <table><thead><tr><th>Data de cancelamento</th><th>Bairro</th><th>Cliente</th><th>Motivo</th><th class="right">Taxa que teria sido cobrada</th></tr></thead><tbody>{% for row in canceladas %}<tr><td>{{ row.data }}</td><td>{{ row.bairro }}</td><td>{{ row.cliente }}</td><td>{{ row.motivo }}</td><td class="right">R$ {{ brl(row.taxa) }}</td></tr>{% endfor %}</tbody></table>
 {% endif %}
-</body>
-</html>
+{% endblock %}

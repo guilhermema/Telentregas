@@ -3,6 +3,7 @@ from flask_login import current_user, login_user, logout_user
 
 from app.forms import LoginForm
 from app.models import User
+from app.extensions import limiter
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -15,6 +16,7 @@ ROLE_ENDPOINTS = {
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute", methods=["POST"])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for(ROLE_ENDPOINTS[current_user.role]))

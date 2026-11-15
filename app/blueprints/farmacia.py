@@ -42,57 +42,11 @@ def nova_entrega():
         return redirect(url_for("farmacia.dashboard"))
 
     if form.validate_on_submit():
-        bairro_preco = BairroPreco.query.filter_by(
-            farmacia_id=farmacia.id, bairro=form.bairro_entrega.data
-        ).first()
-        if bairro_preco is None:
-            flash("Bairro não cadastrado. Solicite à Central", "error")
-            return redirect(url_for("farmacia.dashboard"))
-
         try:
-            cpf = normalize_cpf(form.cpf_cliente.data)
-            telefone = normalize_phone(form.telefone_cliente.data)
+            criar_entrega(farmacia, form)
         except ValueError as error:
             flash(str(error), "error")
             return redirect(url_for("farmacia.dashboard"))
-        cliente = Cliente.query.filter_by(farmacia_id=farmacia.id, cpf=cpf).first()
-        if cliente is None:
-            cliente = Cliente(farmacia_id=farmacia.id, cpf=cpf)
-            db.session.add(cliente)
-        cliente.nome = form.nome_cliente.data.strip()
-        cliente.telefone = telefone
-        endereco = form.endereco_entrega.data.strip()
-        endereco_normalizado = normalize_text(endereco)
-        endereco_cliente = next(
-            (item for item in cliente.enderecos if item.ativo and normalize_text(item.endereco) == endereco_normalizado
-             and normalize_text(item.bairro) == normalize_text(bairro_preco.bairro)),
-            None,
-        )
-        if endereco_cliente is None:
-            endereco_cliente = EnderecoCliente(
-                cliente=cliente, endereco=endereco, bairro=bairro_preco.bairro, ultimo_uso=datetime.utcnow()
-            )
-            db.session.add(endereco_cliente)
-        else:
-            endereco_cliente.ultimo_uso = datetime.utcnow()
-        entrega = Entrega(
-            farmacia_id=farmacia.id,
-            cliente=cliente,
-            nome_cliente=form.nome_cliente.data.strip(),
-            telefone_cliente=telefone,
-            endereco_entrega=endereco,
-            bairro_entrega=bairro_preco.bairro,
-            valor_taxa=Decimal(bairro_preco.valor_taxa),
-            precisa_troco=form.precisa_troco.data,
-            valor_troco=form.valor_troco.data,
-            usa_maquininha=form.usa_maquininha.data,
-            observacoes=(form.observacoes.data or "").strip() or None,
-        )
-        db.session.add(entrega)
-        db.session.commit()
-        from app.push import notificar_motoboys
-
-        notificar_motoboys(entrega)
         flash("Entrega cadastrada com sucesso.", "success")
         return redirect(url_for("farmacia.dashboard"))
 
@@ -275,6 +229,57 @@ def _formulario(bairros: list[BairroPreco]) -> EntregaForm:
     form = EntregaForm()
     form.bairro_entrega.choices = [(bairro.bairro, bairro.bairro) for bairro in bairros]
     return form
+
+
+def criar_entrega(farmacia: Farmacia, form: EntregaForm, criada_por_central: bool = False) -> Entrega:
+    bairro_preco = BairroPreco.query.filter_by(
+        farmacia_id=farmacia.id, bairro=form.bairro_entrega.data
+    ).first()
+    if bairro_preco is None:
+        raise ValueError("Bairro não cadastrado. Solicite à Central")
+    cpf = normalize_cpf(form.cpf_cliente.data)
+    telefone = normalize_phone(form.telefone_cliente.data)
+    cliente = Cliente.query.filter_by(farmacia_id=farmacia.id, cpf=cpf).first()
+    if cliente is None:
+        cliente = Cliente(farmacia_id=farmacia.id, cpf=cpf)
+        db.session.add(cliente)
+    cliente.nome = form.nome_cliente.data.strip()
+    cliente.telefone = telefone
+    endereco = form.endereco_entrega.data.strip()
+    endereco_cliente = next(
+        (item for item in cliente.enderecos if item.ativo and normalize_text(item.endereco) == normalize_text(endereco)
+         and normalize_text(item.bairro) == normalize_text(bairro_preco.bairro)),
+        None,
+    )
+    if endereco_cliente is None:
+        db.session.add(EnderecoCliente(
+            cliente=cliente, endereco=endereco, bairro=bairro_preco.bairro, ultimo_uso=datetime.utcnow()
+        ))
+    else:
+        endereco_cliente.ultimo_uso = datetime.utcnow()
+    valor_troco = Decimal(form.valor_troco.data) if form.valor_troco.data else None
+    valor_cobrar = Decimal(form.valor_cobrar.data) if form.valor_cobrar.data else None
+    entrega = Entrega(
+        farmacia_id=farmacia.id,
+        cliente=cliente,
+        nome_cliente=form.nome_cliente.data.strip(),
+        telefone_cliente=telefone,
+        endereco_entrega=endereco,
+        bairro_entrega=bairro_preco.bairro,
+        valor_taxa=Decimal(bairro_preco.valor_taxa),
+        precisa_troco=bool(form.precisa_troco.data),
+        valor_troco=valor_troco,
+        usa_maquininha=bool(form.usa_maquininha.data),
+        forma_pagamento=form.forma_pagamento.data,
+        valor_cobrar=valor_cobrar,
+        criada_por_central=criada_por_central,
+        observacoes=(form.observacoes.data or "").strip() or None,
+    )
+    db.session.add(entrega)
+    db.session.commit()
+    from app.push import notificar_motoboys
+    notificar_motoboys(entrega)
+    return entrega
 
 
 def _entregas_andamento(farmacia_id: int) -> list[Entrega]:

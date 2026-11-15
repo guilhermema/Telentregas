@@ -41,10 +41,15 @@ def praca_json():
     canceladas = Entrega.query.filter_by(motoboy_id=motoboy.id, status="cancelada").order_by(
         Entrega.data_cancelamento.desc()
     ).limit(30).all()
+    devolvidas = Entrega.query.filter(
+        Entrega.motoboy_anterior_id == motoboy.id,
+        Entrega.status == "pendente",
+    ).order_by(Entrega.devolvida_em.desc()).limit(30).all()
     return jsonify({
         "entregas": [_praca_json(entrega) for entrega in entregas],
         "ativas": [_ativa_json(entrega) for entrega in ativas],
         "canceladas": [_cancelada_json(entrega) for entrega in canceladas],
+        "devolvidas": [_devolvida_json(entrega) for entrega in devolvidas],
     })
 
 
@@ -192,6 +197,7 @@ def _praca_json(entrega: Entrega) -> dict:
         "precisa_troco": entrega.precisa_troco,
         "valor_troco": f"{entrega.valor_troco:.2f}" if entrega.valor_troco is not None else None,
         "usa_maquininha": entrega.usa_maquininha,
+        "pagamento": _pagamento_texto(entrega),
         "farmacia": entrega.farmacia.razao_social,
         "farmacia_endereco": endereco,
         "farmacia_latitude": float(farmacia.latitude) if farmacia.latitude is not None else None,
@@ -235,6 +241,7 @@ def _ativa_json(entrega: Entrega) -> dict:
         "precisa_troco": entrega.precisa_troco,
         "valor_troco": f"{entrega.valor_troco:.2f}" if entrega.valor_troco is not None else None,
         "usa_maquininha": entrega.usa_maquininha,
+        "pagamento": _pagamento_texto(entrega),
         "observacoes": entrega.observacoes,
         "data_aceite": entrega.data_aceite.isoformat() if entrega.data_aceite else None,
         "data_coleta": entrega.data_coleta.isoformat() if entrega.data_coleta else None,
@@ -252,11 +259,33 @@ def _ativa_json(entrega: Entrega) -> dict:
     }
 
 
+def _pagamento_texto(entrega: Entrega) -> str:
+    valor = f"R$ {entrega.valor_cobrar:.2f}" if entrega.valor_cobrar is not None else ""
+    if entrega.forma_pagamento == "dinheiro":
+        troco = f" - troco para R$ {entrega.valor_troco:.2f}" if entrega.valor_troco is not None else ""
+        return f"COBRAR{f' {valor}' if valor else ''} EM DINHEIRO{troco}"
+    if entrega.forma_pagamento == "cartao":
+        return f"COBRAR{f' {valor}' if valor else ''} NO CARTÃO (levar maquininha)"
+    if entrega.forma_pagamento == "pix":
+        return "JÁ PAGO (Pix)"
+    if entrega.forma_pagamento == "convenio":
+        return "CONVÊNIO: coletar assinatura na nota"
+    return "JÁ PAGO"
+
+
 def _cancelada_json(entrega: Entrega) -> dict:
     return {
         "id": entrega.id,
         "bairro": entrega.bairro_entrega,
         "motivo": entrega.motivo_cancelamento or "Não informado",
+    }
+
+
+def _devolvida_json(entrega: Entrega) -> dict:
+    return {
+        "id": entrega.id,
+        "bairro": entrega.bairro_entrega,
+        "motivo": entrega.motivo_devolucao or "Não informado",
     }
 
 

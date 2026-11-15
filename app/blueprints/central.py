@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 import json
 import re
@@ -8,13 +8,16 @@ from urllib.request import Request, urlopen
 from pathlib import Path
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, url_for
-from sqlalchemy import func, update
+from flask_login import current_user
+from sqlalchemy import case, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash
 
 from app.decorators import role_required
 from app.extensions import db
+from app.forms import EntregaForm
 from app.models import BairroPreco, Cliente, Entrega, Farmacia, Motoboy, User
+from app.blueprints.farmacia import _bairros_da_farmacia, _formulario, criar_entrega
 from app.report import (
     brl,
     cancelled_data,
@@ -28,7 +31,7 @@ from app.report import (
     summary_data,
 )
 from app.report import SAO_PAULO
-from app.utils.validators import mask_cpf
+from app.utils.validators import mask_cpf, normalize_cpf
 
 central_bp = Blueprint("central", __name__)
 ATIVOS = ("pendente", "aceita", "coletada")
@@ -80,6 +83,249 @@ def dashboard():
     )
 
 
+@central_bp.route("/entregas/nova", methods=["GET", "POST"])
+@role_required("admin")
+def nova_entrega():
+    farmacias = Farmacia.query.join(User).filter(User.ativo.is_(True)).order_by(Farmacia.razao_social).all()
+    farmacia_id = request.form.get("farmacia_id", type=int) if request.method == "POST" else request.args.get("farmacia_id", type=int)
+    farmacia = db.session.get(Farmacia, farmacia_id) if farmacia_id else None
+    if farmacia is not None and farmacia not in farmacias:
+        farmacia = None
+    bairros = _bairros_da_farmacia(farmacia.id) if farmacia else []
+    form = _formulario(bairros)
+    if request.method == "POST" and farmacia is None:
+        flash("Selecione uma farmácia.", "error")
+    elif request.method == "POST" and form.validate_on_submit():
+        try:
+            criar_entrega(farmacia, form, criada_por_central=True)
+        except ValueError as error:
+            flash(str(error), "error")
+        else:
+            flash("Entrega criada pela Central.", "success")
+            return redirect(url_for("central.dashboard"))
+    return render_template(
+        "farmacia/dashboard.html",
+        farmacia=farmacia,
+        form=form,
+        bairros=bairros,
+        taxas={bairro.bairro: f"R$ {bairro.valor_taxa:.2f}" for bairro in bairros},
+        central_form=True,
+        farmacias=farmacias,
+        selected_farmacia_id=farmacia_id,
+        cliente_lookup_url=url_for("central.buscar_cliente", farmacia_id=farmacia.id) if farmacia else "",
+    )
+
+
+@central_bp.get("/api/clientes/buscar/<int:farmacia_id>")
+@role_required("admin")
+def buscar_cliente(farmacia_id: int):
+    farmacia = Farmacia.query.get_or_404(farmacia_id)
+    try:
+        cpf = normalize_cpf(request.args.get("cpf", ""))
+    except ValueError:
+        return jsonify({"encontrado": False}), 400
+    cliente = Cliente.query.filter_by(farmacia_id=farmacia.id, cpf=cpf).first()
+    if cliente is None:
+        return jsonify({"encontrado": False, "mensagem": "Cliente novo"})
+    enderecos = sorted((item for item in cliente.enderecos if item.ativo), key=lambda item: item.ultimo_uso, reverse=True)
+    return jsonify({
+        "encontrado": True, "cpf": mask_cpf(cliente.cpf), "nome": cliente.nome, "telefone": cliente.telefone,
+        "enderecos": [{"id": item.id, "endereco": item.endereco, "bairro": item.bairro, "complemento": item.complemento} for item in enderecos],
+    })
+
+
+def _dashboard_payload():
+    agora = datetime.utcnow()
+    hoje = datetime.now(SAO_PAULO).date()
+    inicio_hoje, _ = period_bounds(hoje, hoje)
+    primeiro_mes, _ = period_bounds(hoje.replace(day=1), hoje)
+    inicio_graficos, fim_graficos = period_bounds(hoje - timedelta(days=29), hoje)
+    limite_pendente = agora - timedelta(minutes=current_app.config["PENDENTE_ALERTA_MIN"])
+    limite_aceita = agora - timedelta(minutes=current_app.config["ACEITA_ALERTA_MIN"])
+    limite_coletada = agora - timedelta(minutes=current_app.config["COLETADA_ALERTA_MIN"])
+
+    agregados = db.session.query(
+        Entrega.status,
+        func.count(Entrega.id),
+        func.coalesce(func.sum(Entrega.valor_taxa), 0),
+    ).filter(
+        Entrega.data_criacao >= inicio_hoje,
+        Entrega.data_criacao <= agora,
+    ).group_by(Entrega.status).all()
+    por_status = {status: (int(quantidade), Decimal(total or 0)) for status, quantidade, total in agregados}
+    cards = {
+        "criadas": sum(valor[0] for valor in por_status.values()),
+        "entregues": por_status.get("entregue", (0, Decimal("0.00")))[0],
+        "em_rota": sum(por_status.get(status, (0, Decimal("0.00")))[0] for status in ("aceita", "coletada")),
+        "pendentes_sem_motoboy": db.session.query(func.count(Entrega.id)).filter(
+            Entrega.data_criacao >= inicio_hoje, Entrega.data_criacao <= agora,
+            Entrega.status == "pendente", Entrega.motoboy_id.is_(None),
+        ).scalar() or 0,
+        "canceladas": por_status.get("cancelada", (0, Decimal("0.00")))[0],
+        "taxas_entregues": f"{por_status.get('entregue', (0, Decimal('0.00')))[1]:.2f}",
+    }
+
+    if db.engine.dialect.name == "postgresql":
+        data_local = func.date(
+            func.timezone(
+                "America/Sao_Paulo",
+                func.timezone("UTC", Entrega.data_entrega),
+            )
+        )
+        hora_local = func.cast(
+            func.to_char(
+                func.timezone(
+                    "America/Sao_Paulo",
+                    func.timezone("UTC", Entrega.data_entrega),
+                ),
+                "HH24",
+            ),
+            db.Integer,
+        )
+    else:
+        # SQLite is used by the lightweight test scripts and has no named
+        # timezone conversion; the application timezone is UTC-3.
+        data_local = func.date(func.datetime(Entrega.data_entrega, "-3 hours"))
+        hora_local = func.cast(
+            func.strftime("%H", func.datetime(Entrega.data_entrega, "-3 hours")),
+            db.Integer,
+        )
+
+    dias_agregados = db.session.query(
+        data_local.label("dia"), func.count(Entrega.id)
+    ).filter(
+        Entrega.status == "entregue",
+        Entrega.data_entrega >= inicio_graficos,
+        Entrega.data_entrega < fim_graficos,
+    ).group_by(data_local).all()
+    dias_por_data = {str(dia): int(total) for dia, total in dias_agregados}
+    entregas_por_dia = [
+        {
+            "data": (hoje - timedelta(days=indice)).isoformat(),
+            "quantidade": dias_por_data.get((hoje - timedelta(days=indice)).isoformat(), 0),
+        }
+        for indice in range(13, -1, -1)
+    ]
+
+    horas_agregadas = db.session.query(
+        hora_local.label("hora"), func.count(Entrega.id)
+    ).filter(
+        Entrega.status == "entregue",
+        Entrega.data_entrega >= inicio_graficos,
+        Entrega.data_entrega < fim_graficos,
+    ).group_by(hora_local).all()
+    horas_por_hora = {int(hora): int(total) for hora, total in horas_agregadas if hora is not None}
+    entregas_por_hora = [
+        {"hora": hora, "quantidade": horas_por_hora.get(hora, 0)}
+        for hora in range(24)
+    ]
+
+    def alertas_entregas(status, limite, timestamp):
+        return Entrega.query.filter(
+            Entrega.status == status, timestamp < limite
+        ).order_by(timestamp.asc()).all()
+
+    alertas = []
+    for titulo, status, limite, timestamp in (
+        ("Pendente há muito tempo", "pendente", limite_pendente, Entrega.data_criacao),
+        ("Aceita aguardando coleta", "aceita", limite_aceita, Entrega.data_aceite),
+        ("Coletada aguardando entrega", "coletada", limite_coletada, Entrega.data_coleta),
+    ):
+        for entrega in alertas_entregas(status, limite, timestamp):
+            alertas.append({
+                "tipo": "entrega",
+                "titulo": titulo,
+                "texto": f"{entrega.farmacia.razao_social} · {entrega.nome_cliente} · {entrega.bairro_entrega}",
+                "url": url_for("central.dashboard", farmacia_id=entrega.farmacia_id, status=status),
+                "entrega_id": entrega.id,
+            })
+
+    from app.models import PushSubscription
+    motoboys_sem_push = Motoboy.query.join(User).filter(
+        User.ativo.is_(True),
+        ~db.session.query(PushSubscription.id).filter(PushSubscription.user_id == Motoboy.user_id).exists(),
+    ).all()
+    for motoboy in motoboys_sem_push:
+        alertas.append({
+            "tipo": "motoboy",
+            "titulo": "Motoboy sem notificações push",
+            "texto": motoboy.nome,
+            "url": url_for("central.motoboys"),
+        })
+    farmacias_sem_bairro = Farmacia.query.join(User).outerjoin(BairroPreco).filter(
+        User.ativo.is_(True)
+    ).group_by(Farmacia.id).having(func.count(BairroPreco.id) == 0).all()
+    for farmacia in farmacias_sem_bairro:
+        alertas.append({
+            "tipo": "farmacia",
+            "titulo": "Farmácia sem tabela de preços",
+            "texto": farmacia.razao_social,
+            "url": url_for("central.precos", farmacia_id=farmacia.id),
+        })
+
+    ativos = Entrega.query.filter(Entrega.status.in_(ATIVOS)).all()
+    ids_alerta = {item["entrega_id"] for item in alertas if "entrega_id" in item}
+    entregas_json = []
+    farmacia_filter = request.args.get("farmacia_id", type=int)
+    status_filter = request.args.get("status")
+    for entrega in ativos:
+        if farmacia_filter and entrega.farmacia_id != farmacia_filter:
+            continue
+        if status_filter in ATIVOS and entrega.status != status_filter:
+            continue
+        item = _entrega_json(entrega)
+        item["alerta"] = entrega.id in ids_alerta
+        entregas_json.append(item)
+
+    motoboys = []
+    for motoboy in Motoboy.query.join(User).filter(User.ativo.is_(True)).order_by(Motoboy.nome).all():
+        corridas = [entrega for entrega in ativos if entrega.motoboy_id == motoboy.id]
+        atividades = [
+            data for entrega in corridas
+            for data in (entrega.data_aceite, entrega.data_coleta, entrega.data_entrega)
+            if data is not None
+        ]
+        ultima = max(atividades) if atividades else None
+        push_ativo = db.session.query(PushSubscription.id).filter(
+            PushSubscription.user_id == motoboy.user_id
+        ).first() is not None
+        motoboys.append({
+            "id": motoboy.id,
+            "nome": motoboy.nome,
+            "corridas": len(corridas),
+            "ultima_atividade": ultima.isoformat() if ultima else None,
+            "push_ativo": push_ativo,
+        })
+
+    resumo = db.session.query(
+        Farmacia.id, Farmacia.razao_social,
+        func.sum(case((Entrega.data_criacao >= inicio_hoje, 1), else_=0)),
+        func.count(Entrega.id),
+        func.coalesce(func.sum(case((Entrega.status == "entregue", Entrega.valor_taxa), else_=0)), 0),
+    ).outerjoin(Entrega, (Entrega.farmacia_id == Farmacia.id) & (Entrega.data_criacao >= primeiro_mes) & (Entrega.data_criacao <= agora)).group_by(
+        Farmacia.id, Farmacia.razao_social
+    ).order_by(Farmacia.razao_social).all()
+    farmacias_resumo = [{
+        "id": farmacia_id, "nome": nome, "hoje": int(hoje_count or 0),
+        "mes": int(mes_count or 0), "valor_mes": f"{Decimal(valor or 0):.2f}",
+        "url": url_for("central.cliente_detalhe", farmacia_id=farmacia_id),
+    } for farmacia_id, nome, hoje_count, mes_count, valor in resumo]
+    return {
+        "cards": cards, "alertas": alertas, "motoboys": motoboys,
+        "entregas": entregas_json, "farmacias": farmacias_resumo,
+        "graficos": {
+            "entregas_por_dia": entregas_por_dia,
+            "entregas_por_hora": entregas_por_hora,
+        },
+    }
+
+
+@central_bp.get("/api/dashboard")
+@role_required("admin")
+def dashboard_json():
+    return jsonify(_dashboard_payload())
+
+
 @central_bp.get("/api/andamento")
 @role_required("admin")
 def andamento_json():
@@ -92,6 +338,38 @@ def andamento_json():
         query = query.filter(Entrega.status == status)
     entregas = query.order_by(Entrega.data_criacao.desc()).all()
     return jsonify({"entregas": [_entrega_json(entrega) for entrega in entregas]})
+
+
+@central_bp.post("/entregas/<int:entrega_id>/devolver")
+@role_required("admin")
+def devolver_a_praca(entrega_id: int):
+    motivo = request.form.get("motivo_devolucao", "").strip()
+    if len(motivo) < 3:
+        flash("O motivo da devolução é obrigatório e deve ter pelo menos 3 caracteres.", "error")
+        return redirect(url_for("central.dashboard"))
+    entrega = Entrega.query.filter_by(id=entrega_id).first()
+    if entrega is None:
+        flash("Entrega não encontrada.", "error")
+        return redirect(url_for("central.dashboard"))
+    motoboy_id = entrega.motoboy_id
+    result = db.session.execute(
+        update(Entrega).where(
+            Entrega.id == entrega_id, Entrega.status == "aceita"
+        ).values(
+            status="pendente", motoboy_id=None, data_aceite=None,
+            motivo_devolucao=motivo, devolvida_em=datetime.utcnow(),
+            devolvida_por_user_id=current_user.id,
+            motoboy_anterior_id=motoboy_id,
+        )
+    )
+    db.session.commit()
+    if result.rowcount != 1:
+        flash("A entrega já mudou de status e não foi devolvida à praça.", "error")
+    else:
+        from app.push import notificar_motoboys
+        notificar_motoboys(entrega)
+        flash("Entrega devolvida à praça.", "success")
+    return redirect(url_for("central.dashboard"))
 
 
 @central_bp.post("/entregas/<int:entrega_id>/cancelar")
@@ -501,6 +779,19 @@ def _filtrar_periodo(query, data_de, data_ate):
 
 
 def _entrega_json(entrega: Entrega) -> dict:
+    agora = datetime.utcnow()
+    status_data = {
+        "pendente": entrega.data_criacao,
+        "aceita": entrega.data_aceite,
+        "coletada": entrega.data_coleta,
+    }.get(entrega.status)
+    minutos_criacao = max(0, int((agora - entrega.data_criacao).total_seconds() // 60))
+    minutos_status = max(0, int((agora - status_data).total_seconds() // 60)) if status_data else 0
+    limites = {
+        "pendente": current_app.config["PENDENTE_ALERTA_MIN"],
+        "aceita": current_app.config["ACEITA_ALERTA_MIN"],
+        "coletada": current_app.config["COLETADA_ALERTA_MIN"],
+    }
     return {
         "id": entrega.id,
         "farmacia": entrega.farmacia.razao_social,
@@ -512,4 +803,8 @@ def _entrega_json(entrega: Entrega) -> dict:
         "criacao": entrega.data_criacao.isoformat(),
         "aceite": entrega.data_aceite.isoformat() if entrega.data_aceite else None,
         "coleta": entrega.data_coleta.isoformat() if entrega.data_coleta else None,
+        "minutos_criacao": minutos_criacao,
+        "minutos_status": minutos_status,
+        "limite_status": limites.get(entrega.status),
+        "criada_por_central": entrega.criada_por_central,
     }

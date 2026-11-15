@@ -8,32 +8,37 @@
   <link rel="manifest" href="{{ url_for('manifest') }}">
   <title>{% block title %}TelEntregas{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ config.ASSET_VERSION }}">
+  {% block head_extra %}{% endblock %}
 </head>
 <body class="min-h-screen bg-slate-100 text-slate-900">
-  <header class="border-b bg-white">
-    <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
-      <a href="{{ url_for('auth.login') }}" class="text-lg font-bold text-indigo-700">TelEntregas</a>
-      {% if current_user.is_authenticated %}
-        <form method="post" action="{{ url_for('auth.logout') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
-            Sair
-          </button>
-        </form>
-      {% endif %}
-    </div>
-  </header>
-  <main class="mx-auto max-w-5xl px-4 py-6">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-        <div class="mb-4 rounded-lg border px-4 py-3 text-sm
-          {% if category == 'error' %}border-red-200 bg-red-50 text-red-700
-          {% else %}border-green-200 bg-green-50 text-green-700{% endif %}">
-          {{ message }}
-        </div>
-      {% endfor %}
-    {% endwith %}
-    {% block content %}{% endblock %}
-  </main>
+  {% block page %}
+    <header class="border-b bg-white">
+      <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
+        <a href="{{ url_for('auth.login') }}" class="text-lg font-bold text-indigo-700">TelEntregas</a>
+        {% if current_user.is_authenticated %}
+          <form method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+              Sair
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </header>
+    <main class="mx-auto max-w-5xl px-4 py-6">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="mb-4 rounded-lg border px-4 py-3 text-sm
+            {% if category == 'error' %}border-red-200 bg-red-50 text-red-700
+            {% else %}border-green-200 bg-green-50 text-green-700{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+  {% endblock %}
 </body>
 </html>

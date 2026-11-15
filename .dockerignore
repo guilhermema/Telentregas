@@ -1,0 +1,8 @@
+.env
+*.sql
+.venv
+__pycache__
+*.py[cod]
+seed_teste.py
+.git
+.gitignore

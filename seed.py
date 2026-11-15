@@ -17,8 +17,10 @@ def main() -> None:
 
     app = create_app()
     with app.app_context():
-        if User.query.filter_by(username=username).first():
-            raise SystemExit(f"O usuário '{username}' já existe.")
+        existente = User.query.filter_by(username=username).first()
+        if existente:
+            print(f"Admin '{username}' já existe; senha preservada.")
+            return
 
         admin = User(username=username, role="admin", ativo=True)
         admin.set_password(password)

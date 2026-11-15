@@ -4,13 +4,19 @@
 <div class="space-y-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
-      <h1 class="text-2xl font-bold">{{ farmacia.razao_social }}</h1>
-      <p class="text-slate-600">Nova entrega e entregas em andamento</p>
+      <h1 class="text-2xl font-bold">{{ 'Nova entrega pela Central' if central_form else farmacia.razao_social }}</h1>
+      <p class="text-slate-600">{{ 'Selecione a farmácia e preencha os dados da entrega' if central_form else 'Nova entrega e entregas em andamento' }}</p>
     </div>
-    <div class="flex gap-2"><a href="{{ url_for('farmacia.clientes') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold">Meus clientes</a><a href="{{ url_for('farmacia.historico') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Histórico</a></div>
+    {% if not central_form %}<div class="flex gap-2"><a href="{{ url_for('farmacia.clientes') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold">Meus clientes</a><a href="{{ url_for('farmacia.historico') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Histórico</a></div>{% endif %}
   </div>
 
-  {% if not bairros %}
+  {% if central_form %}
+  <form method="get" class="rounded-xl bg-white p-4 shadow-sm">
+    <label class="mb-1 block text-sm font-medium" for="central-farmacia">Farmácia</label>
+    <select id="central-farmacia" name="farmacia_id" class="w-full rounded-lg border px-3 py-2" onchange="this.form.submit()"><option value="">Selecione uma farmácia</option>{% for item in farmacias %}<option value="{{ item.id }}" {% if selected_farmacia_id == item.id %}selected{% endif %}>{{ item.razao_social }}</option>{% endfor %}</select>
+  </form>
+  {% endif %}
+  {% if not bairros and farmacia %}
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
       <p class="font-semibold">Bairro não cadastrado. Solicite à Central</p>
       {% if config.CENTRAL_WHATSAPP %}
@@ -23,8 +29,9 @@
 
   <section class="rounded-xl bg-white p-5 shadow-sm">
     <h2 class="mb-4 text-xl font-bold">Nova entrega</h2>
-    <form method="post" action="{{ url_for('farmacia.nova_entrega') }}" class="grid gap-4 md:grid-cols-2">
+    <form method="post" action="{{ url_for('central.nova_entrega') if central_form else url_for('farmacia.nova_entrega') }}" class="grid gap-4 md:grid-cols-2">
       {{ form.hidden_tag() }}
+      {% if central_form and farmacia %}<input type="hidden" name="farmacia_id" value="{{ farmacia.id }}">{% endif %}
       <div class="md:col-span-2">
         {{ form.cpf_cliente.label(class="mb-1 block text-sm font-medium") }}
         {{ form.cpf_cliente(class="w-full rounded-lg border border-slate-300 px-3 py-2", id="cpf-cliente", inputmode="numeric", autocomplete="off") }}
@@ -54,11 +61,21 @@
           >Solicitar à Central</a>
         </p>
       </div>
-      <div class="flex items-center gap-2 pt-7">
+      <div class="md:col-span-2">
+        {{ form.forma_pagamento.label(class="mb-1 block text-sm font-medium") }}
+        {{ form.forma_pagamento(class="w-full rounded-lg border border-slate-300 px-3 py-2", id="forma-pagamento") }}
+        {% for error in form.forma_pagamento.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+      </div>
+      <div id="campo-valor-cobrar" class="hidden">
+        {{ form.valor_cobrar.label(class="mb-1 block text-sm font-medium") }}
+        {{ form.valor_cobrar(class="w-full rounded-lg border border-slate-300 px-3 py-2", placeholder="0,00", inputmode="decimal") }}
+        {% for error in form.valor_cobrar.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+      </div>
+      <div id="campo-maquininha" class="hidden items-center gap-2 pt-7">
         {{ form.usa_maquininha(class="h-4 w-4 rounded border-slate-300") }}
         {{ form.usa_maquininha.label(class="text-sm font-medium") }}
       </div>
-      <div class="md:col-span-2">
+      <div id="campo-pagamento-troco" class="hidden md:col-span-2">
         <div class="flex items-center gap-2">
           {{ form.precisa_troco(class="h-4 w-4 rounded border-slate-300", id="precisa-troco") }}
           {{ form.precisa_troco.label(class="text-sm font-medium") }}
@@ -80,7 +97,7 @@
     </form>
   </section>
 
-  <section class="rounded-xl bg-white p-5 shadow-sm">
+  {% if not central_form %}<section class="rounded-xl bg-white p-5 shadow-sm">
     <div class="mb-4 flex items-center justify-between">
       <h2 class="text-xl font-bold">Em andamento</h2>
       <span class="text-sm text-slate-500">Atualiza a cada 10 segundos</span>
@@ -88,10 +105,11 @@
     <div id="entregas-andamento" class="space-y-3">
       <p class="text-slate-500">Carregando...</p>
     </div>
-  </section>
+  </section>{% endif %}
 </div>
 <script>
 const bairros = {{ bairros|map(attribute='bairro')|list|tojson }};
+const clienteLookupUrl = {{ (cliente_lookup_url if central_form else url_for('farmacia.buscar_cliente'))|tojson }};
 const taxas = {{ taxas|tojson }};
 const statusLabels = {pendente: 'Pendente', aceita: 'Aceita', coletada: 'Coletada'};
 const statusClasses = {pendente: 'bg-amber-100 text-amber-800', aceita: 'bg-blue-100 text-blue-800', coletada: 'bg-purple-100 text-purple-800'};
@@ -99,9 +117,26 @@ const bairroSelect = document.getElementById('bairro-entrega');
 const taxa = document.getElementById('taxa-bairro');
 const troco = document.getElementById('precisa-troco');
 const campoTroco = document.getElementById('campo-troco');
+const formaPagamento = document.getElementById('forma-pagamento');
+const campoValorCobrar = document.getElementById('campo-valor-cobrar');
+const campoMaquininha = document.getElementById('campo-maquininha');
+const campoPagamentoTroco = document.getElementById('campo-pagamento-troco');
 const cpfCliente = document.getElementById('cpf-cliente');
 const clienteAviso = document.getElementById('cliente-aviso');
 let buscaCliente;
+function atualizarPagamento() {
+  const forma = formaPagamento.value;
+  const dinheiro = forma === 'dinheiro';
+  const cartao = forma === 'cartao';
+  campoValorCobrar.classList.toggle('hidden', !(dinheiro || cartao));
+  campoMaquininha.classList.toggle('hidden', !cartao);
+  campoPagamentoTroco.classList.toggle('hidden', !dinheiro);
+  document.getElementById('usa_maquininha').checked = cartao;
+  if (!dinheiro) { troco.checked = false; document.getElementById('valor_troco').value = ''; }
+  if (!dinheiro && !cartao) document.getElementById('valor_cobrar').value = '';
+}
+formaPagamento?.addEventListener('change', atualizarPagamento);
+atualizarPagamento();
 function mascararCpf(valor) { const digits = valor.replace(/\D/g, '').slice(0, 11); return digits.length > 9 ? `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}` : digits; }
 function preencherCliente(data) {
   if (!data.encontrado) { clienteAviso.textContent = 'Cliente novo'; return; }
@@ -122,7 +157,7 @@ function preencherCliente(data) {
   document.getElementById('outros-enderecos')?.addEventListener('change', event => { const item = window.enderecosCliente?.[Number(event.target.value)]; if (!item) return; document.getElementById('endereco_entrega').value = item.endereco; bairroSelect.value = bairros.includes(item.bairro) ? item.bairro : ''; atualizarTaxa(); });
   document.getElementById('limpar-endereco')?.addEventListener('click', () => { document.getElementById('endereco_entrega').value = ''; bairroSelect.value = ''; atualizarTaxa(); });
 }
-cpfCliente?.addEventListener('input', () => { cpfCliente.value = mascararCpf(cpfCliente.value); clearTimeout(buscaCliente); if (cpfCliente.value.replace(/\D/g, '').length === 11) buscaCliente = setTimeout(async () => { try { const response = await fetch(`{{ url_for('farmacia.buscar_cliente') }}?cpf=${encodeURIComponent(cpfCliente.value)}`); preencherCliente(await response.json()); } catch (_) { clienteAviso.textContent = 'Não foi possível buscar o cliente.'; } }, 250); });
+cpfCliente?.addEventListener('input', () => { cpfCliente.value = mascararCpf(cpfCliente.value); clearTimeout(buscaCliente); if (cpfCliente.value.replace(/\D/g, '').length === 11 && clienteLookupUrl) buscaCliente = setTimeout(async () => { try { const response = await fetch(`${clienteLookupUrl}?cpf=${encodeURIComponent(cpfCliente.value)}`); preencherCliente(await response.json()); } catch (_) { clienteAviso.textContent = 'Não foi possível buscar o cliente.'; } }, 250); });
 function atualizarTaxa() { taxa.textContent = taxas[bairroSelect.value] || 'Selecione um bairro'; }
 function atualizarTroco() { campoTroco.classList.toggle('hidden', !troco.checked); }
 bairroSelect?.addEventListener('change', atualizarTaxa);

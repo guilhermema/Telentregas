@@ -97,7 +97,9 @@ class Motoboy(db.Model):
     placa_moto = db.Column(db.String(10), nullable=False)
 
     user = db.relationship("User", back_populates="motoboy")
-    entregas = db.relationship("Entrega", back_populates="motoboy")
+    entregas = db.relationship(
+        "Entrega", back_populates="motoboy", foreign_keys="Entrega.motoboy_id"
+    )
 
 
 class Entrega(db.Model):
@@ -121,6 +123,9 @@ class Entrega(db.Model):
     precisa_troco = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
     valor_troco = db.Column(Numeric(10, 2), nullable=True)
     usa_maquininha = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
+    forma_pagamento = db.Column(db.String(20), nullable=False, default="dinheiro", server_default="dinheiro")
+    valor_cobrar = db.Column(Numeric(10, 2), nullable=True)
+    criada_por_central = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
     observacoes = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), nullable=False, default="pendente", server_default="pendente")
     motivo_cancelamento = db.Column(db.Text, nullable=True)
@@ -129,10 +134,21 @@ class Entrega(db.Model):
     data_coleta = db.Column(db.DateTime, nullable=True)
     data_entrega = db.Column(db.DateTime, nullable=True)
     data_cancelamento = db.Column(db.DateTime, nullable=True)
+    motivo_devolucao = db.Column(db.Text, nullable=True)
+    devolvida_em = db.Column(db.DateTime, nullable=True)
+    devolvida_por_user_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    motoboy_anterior_id = db.Column(
+        db.Integer, db.ForeignKey("motoboys.id", ondelete="SET NULL"), nullable=True
+    )
 
     farmacia = db.relationship("Farmacia", back_populates="entregas")
-    motoboy = db.relationship("Motoboy", back_populates="entregas")
+    motoboy = db.relationship(
+        "Motoboy", back_populates="entregas", foreign_keys=[motoboy_id]
+    )
     cliente = db.relationship("Cliente", back_populates="entregas")
+    devolvida_por = db.relationship("User", foreign_keys=[devolvida_por_user_id])
 
     __table_args__ = (
         CheckConstraint(
@@ -148,6 +164,10 @@ class Entrega(db.Model):
             "(precisa_troco = false AND valor_troco IS NULL) OR "
             "(precisa_troco = true AND valor_troco IS NOT NULL AND valor_troco >= 0)",
             name="ck_entregas_troco_consistente",
+        ),
+        CheckConstraint(
+            "forma_pagamento IN ('pix', 'dinheiro', 'cartao', 'convenio', 'ja_pago')",
+            name="ck_entregas_forma_pagamento",
         ),
     )
 

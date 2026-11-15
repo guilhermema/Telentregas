@@ -1,69 +1,71 @@
 {% extends "central/base.html" %}
-{% block title %}Em andamento - Central{% endblock %}
+{% block title %}Central - TelEntregas{% endblock %}
 {% block central_content %}
 <div class="space-y-5">
-  <h1 class="text-2xl font-bold">Entregas em andamento</h1>
-  <form class="grid gap-3 rounded-xl bg-white p-4 shadow-sm sm:grid-cols-3">
-    <select name="farmacia_id" class="rounded-lg border px-3 py-2"><option value="">Todas as farmácias</option>{% for farmacia in farmacias %}<option value="{{ farmacia.id }}" {% if farmacia_filter == farmacia.id|string %}selected{% endif %}>{{ farmacia.razao_social }}</option>{% endfor %}</select>
-    <select name="status" class="rounded-lg border px-3 py-2"><option value="">Todos os status</option>{% for status in ['pendente','aceita','coletada'] %}<option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status|capitalize }}</option>{% endfor %}</select>
-    <button class="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white">Filtrar</button>
-  </form>
-  <div id="central-entregas" class="space-y-3"><p class="text-slate-500">Carregando...</p></div>
-</div>
-<div id="cancel-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true">
-  <div class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
-    <h2 class="text-xl font-bold">Cancelar entrega</h2>
-    <p id="cancel-details" class="mt-2 text-slate-600"></p>
-    <form id="cancel-form" method="post" class="mt-4">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="block text-sm font-semibold" for="cancel-reason">Motivo do cancelamento</label>
-      <textarea id="cancel-reason" name="motivo_cancelamento" minlength="3" required rows="4" class="mt-1 w-full rounded-lg border px-3 py-2"></textarea>
-      <p id="cancel-error" class="mt-1 hidden text-sm text-red-600">Informe pelo menos 3 caracteres.</p>
-      <div class="mt-5 flex justify-end gap-3">
-        <button type="button" id="cancel-back" class="rounded-lg border px-4 py-2">Voltar</button>
-        <button type="submit" class="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white">Confirmar cancelamento</button>
-      </div>
-    </form>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-bold">Painel da Central</h1>
+    <div class="flex flex-wrap gap-2">
+      <a href="{{ url_for('central.farmacias') }}" class="rounded-lg bg-indigo-600 px-3 py-2 font-semibold text-white">Nova farmácia</a>
+      <a href="{{ url_for('central.motoboys') }}" class="rounded-lg bg-indigo-600 px-3 py-2 font-semibold text-white">Novo motoboy</a>
+      <a href="{{ url_for('central.precos') }}" class="rounded-lg bg-indigo-600 px-3 py-2 font-semibold text-white">Tabela de preços</a>
+      <a href="{{ url_for('central.nova_entrega') }}" class="rounded-lg bg-indigo-600 px-3 py-2 font-semibold text-white">Nova entrega</a>
+    </div>
   </div>
+  <section id="cards" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></section>
+  <section class="grid gap-4 lg:grid-cols-2">
+    <div class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-xl font-bold">Entregas por dia</h2>
+      <p class="text-sm text-slate-600">Últimos 14 dias · somente entregues</p>
+      <div id="grafico-dias" class="mt-4"></div>
+    </div>
+    <div class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-xl font-bold">Entregas por hora</h2>
+      <p class="text-sm text-slate-600">Últimos 30 dias · somente entregues</p>
+      <div id="grafico-horas" class="mt-4"></div>
+    </div>
+  </section>
+  <section class="rounded-xl bg-white p-4 shadow-sm"><h2 class="text-xl font-bold">Alertas</h2><div id="alertas" class="mt-3 space-y-2"></div></section>
+  <section class="rounded-xl bg-white p-4 shadow-sm"><h2 class="text-xl font-bold">Situação dos motoboys</h2><div id="motoboys" class="mt-3 grid gap-3 sm:grid-cols-2"></div></section>
+  <section class="space-y-3">
+    <h2 class="text-xl font-bold">Em andamento</h2>
+    <div class="grid gap-3 rounded-xl bg-white p-4 shadow-sm sm:grid-cols-3">
+      <label class="text-sm font-semibold">Farmácia<select id="filtro-farmacia" class="mt-1 w-full rounded-lg border px-3 py-2"><option value="">Todas</option>{% for farmacia in farmacias %}<option value="{{ farmacia.id }}" {% if farmacia_filter == farmacia.id|string %}selected{% endif %}>{{ farmacia.razao_social }}</option>{% endfor %}</select></label>
+      <label class="text-sm font-semibold">Status<select id="filtro-status" class="mt-1 w-full rounded-lg border px-3 py-2"><option value="">Todos</option>{% for status in ['pendente','aceita','coletada'] %}<option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status|capitalize }}</option>{% endfor %}</select></label>
+      <button id="aplicar-filtros" class="self-end rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white">Filtrar</button>
+    </div>
+    <div id="central-entregas" class="space-y-3"><p class="text-slate-500">Carregando...</p></div>
+  </section>
+  <section class="rounded-xl bg-white p-4 shadow-sm"><h2 class="text-xl font-bold">Resumo por farmácia</h2><div id="resumo-farmacias" class="mt-3 overflow-x-auto"></div></section>
 </div>
+<div id="cancel-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true"><div class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl"><h2 class="text-xl font-bold">Cancelar entrega</h2><p id="cancel-details" class="mt-2 text-slate-600"></p><form id="cancel-form" method="post" class="mt-4"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="block text-sm font-semibold" for="cancel-reason">Motivo do cancelamento</label><textarea id="cancel-reason" name="motivo_cancelamento" minlength="3" required rows="4" class="mt-1 w-full rounded-lg border px-3 py-2"></textarea><div class="mt-5 flex justify-end gap-3"><button type="button" data-modal-close class="rounded-lg border px-4 py-2">Voltar</button><button type="submit" class="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white">Confirmar cancelamento</button></div></form></div></div>
+<div id="devolver-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true"><div class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl"><h2 class="text-xl font-bold">Devolver à praça</h2><p id="devolver-details" class="mt-2 text-slate-600"></p><form id="devolver-form" method="post" class="mt-4"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="block text-sm font-semibold" for="devolver-reason">Motivo da devolução</label><textarea id="devolver-reason" name="motivo_devolucao" minlength="3" required rows="4" class="mt-1 w-full rounded-lg border px-3 py-2"></textarea><div class="mt-5 flex justify-end gap-3"><button type="button" data-modal-close class="rounded-lg border px-4 py-2">Voltar</button><button type="submit" class="rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white">Confirmar devolução</button></div></form></div></div>
 <script>
-const params = new URLSearchParams({farmacia_id: '{{ farmacia_filter }}', status: '{{ status_filter }}'});
+const container = document.getElementById('central-entregas'), cards = document.getElementById('cards'), alertas = document.getElementById('alertas'), motoboys = document.getElementById('motoboys'), resumo = document.getElementById('resumo-farmacias'), graficoDias = document.getElementById('grafico-dias'), graficoHoras = document.getElementById('grafico-horas');
 const statusClass = {pendente:'bg-amber-100 text-amber-800', aceita:'bg-blue-100 text-blue-800', coletada:'bg-purple-100 text-purple-800'};
-const container = document.getElementById('central-entregas');
-const cancelModal = document.getElementById('cancel-modal');
-const cancelForm = document.getElementById('cancel-form');
-const cancelReason = document.getElementById('cancel-reason');
-function fecharCancelamento() { cancelModal.classList.add('hidden'); cancelModal.classList.remove('flex'); }
-container.addEventListener('click', event => {
-  const button = event.target.closest('[data-cancel-id]');
-  if (!button) return;
-  document.getElementById('cancel-details').textContent = `Cliente: ${decodeURIComponent(button.dataset.cancelCliente)} · Bairro: ${decodeURIComponent(button.dataset.cancelBairro)}`;
-  cancelForm.action = `/central/entregas/${button.dataset.cancelId}/cancelar`;
-  document.getElementById('cancel-error').classList.add('hidden');
-  cancelModal.classList.remove('hidden'); cancelModal.classList.add('flex');
-  cancelReason.focus();
+let polling, ultimoRedesenhoGraficos = 0;
+function esc(value) { const node = document.createElement('span'); node.textContent = value ?? ''; return node.innerHTML; }
+function abrir(id) { const el = document.getElementById(id); el.classList.remove('hidden'); el.classList.add('flex'); }
+function fecharModais() { document.querySelectorAll('[role="dialog"]').forEach(el => { el.classList.add('hidden'); el.classList.remove('flex'); }); }
+document.addEventListener('click', event => {
+  const cancelar = event.target.closest('[data-cancel-id]'); const devolver = event.target.closest('[data-devolver-id]');
+  if (cancelar) { document.getElementById('cancel-details').textContent = `Cliente: ${cancelar.dataset.cliente} · Bairro: ${cancelar.dataset.bairro}`; document.getElementById('cancel-form').action = `/central/entregas/${cancelar.dataset.cancelId}/cancelar`; abrir('cancel-modal'); document.getElementById('cancel-reason').focus(); }
+  if (devolver) { document.getElementById('devolver-details').textContent = `Cliente: ${devolver.dataset.cliente} · Bairro: ${devolver.dataset.bairro}`; document.getElementById('devolver-form').action = `/central/entregas/${devolver.dataset.devolverId}/devolver`; abrir('devolver-modal'); document.getElementById('devolver-reason').focus(); }
+  if (event.target.closest('[data-modal-close]')) fecharModais();
 });
-document.getElementById('cancel-back').addEventListener('click', fecharCancelamento);
-cancelForm.addEventListener('submit', event => {
-  if (cancelReason.value.trim().length < 3) {
-    event.preventDefault();
-    document.getElementById('cancel-error').classList.remove('hidden');
-    cancelReason.focus();
-  }
-});
-function mostrarSessaoExpirada() {
-  clearInterval(polling);
-  container.innerHTML = '<p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">Sessão expirada, <a class="font-bold underline" href="/auth/login">entre novamente</a>.</p>';
+document.getElementById('aplicar-filtros').addEventListener('click', atualizar);
+function mostrarSessaoExpirada() { clearInterval(polling); container.innerHTML = '<p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">Sessão expirada, <a class="font-bold underline" href="/auth/login">entre novamente</a>.</p>'; }
+function renderCards(c) { const dados = [['Criadas hoje',c.criadas],['Entregues',c.entregues],['Em rota',c.em_rota],['Pendentes sem motoboy',c.pendentes_sem_motoboy],['Canceladas',c.canceladas],['Taxas entregues',`R$ ${c.taxas_entregues}`]]; cards.innerHTML = dados.map(([label,value]) => `<div class="rounded-xl bg-white p-4 shadow-sm"><p class="text-sm text-slate-600">${label}</p><strong class="text-2xl">${value}</strong></div>`).join(''); }
+function renderAlertas(items) { alertas.innerHTML = items.length ? items.map(a => `<a href="${esc(a.url)}" class="block rounded-lg border border-amber-300 bg-amber-50 p-3"><strong>${esc(a.titulo)}</strong><span class="ml-2">${esc(a.texto)}</span></a>`).join('') : '<p class="text-slate-500">Tudo em ordem</p>'; }
+function renderMotoboys(items) { motoboys.innerHTML = items.length ? items.map(m => `<div class="rounded-lg border p-3"><strong>${esc(m.nome)}</strong><p>${m.corridas} corrida(s) em andamento</p><p class="text-sm text-slate-600">Última atividade: ${m.ultima_atividade ? new Date(m.ultima_atividade + 'Z').toLocaleString('pt-BR') : 'Nenhuma'}</p><p class="text-sm">${m.push_ativo ? 'Push ativo' : 'Push inativo'}</p></div>`).join('') : '<p class="text-slate-500">Nenhum motoboy ativo.</p>'; }
+function renderEntregas(items) { container.innerHTML = items.length ? items.map(e => `<article class="rounded-xl bg-white p-3 shadow-sm ${e.alerta ? 'border-2 border-amber-400' : ''}"><div class="flex flex-wrap justify-between gap-2"><strong>${esc(e.farmacia)} · ${esc(e.cliente)}</strong><span class="rounded-full px-3 py-1 text-xs font-semibold ${statusClass[e.status] || ''}">${esc(e.status)}</span></div>${e.criada_por_central ? '<span class="mt-1 inline-block rounded bg-slate-100 px-2 py-1 text-xs font-semibold">Criada pela Central</span>' : ''}<p class="mt-1 text-sm text-slate-600">${esc(e.bairro)} · R$ ${esc(e.taxa)} · Motoboy: ${esc(e.motoboy || 'Aguardando')}</p><p class="text-xs text-slate-500">Criada há ${e.minutos_criacao} min · Status há ${e.minutos_status} min</p><div class="mt-2 flex flex-wrap gap-2">${e.status === 'aceita' ? `<button data-devolver-id="${e.id}" data-cliente="${esc(e.cliente)}" data-bairro="${esc(e.bairro)}" class="rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white">Devolver à praça</button>` : ''}<button data-cancel-id="${e.id}" data-cliente="${esc(e.cliente)}" data-bairro="${esc(e.bairro)}" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-bold text-white">Cancelar</button></div></article>`).join('') : '<p class="rounded-xl bg-white p-4 text-slate-500">Nenhuma entrega encontrada.</p>'; }
+function renderResumo(items) { resumo.innerHTML = `<table class="w-full text-left text-sm"><thead><tr><th class="p-2">Farmácia</th><th class="p-2">Hoje</th><th class="p-2">Mês</th><th class="p-2">Valor do mês</th><th class="p-2">Ações</th></tr></thead><tbody>${items.map(f => `<tr class="border-t"><td class="p-2">${esc(f.nome)}</td><td class="p-2">${f.hoje}</td><td class="p-2">${f.mes}</td><td class="p-2">R$ ${esc(f.valor_mes)}</td><td class="p-2"><a class="underline" href="${esc(f.url)}">Perfil</a></td></tr>`).join('')}</tbody></table>`; }
+function renderGrafico(elemento, itens, rotulo) {
+  if (!itens.some(item => item.quantidade > 0)) { elemento.innerHTML = '<p class="text-sm text-slate-500">Nenhuma entrega no período.</p>'; return; }
+  const maior = Math.max(...itens.map(item => item.quantidade), 1);
+  elemento.innerHTML = `<div class="flex h-56 items-end gap-1 border-b border-l border-slate-300 px-2 pb-1">${itens.map((item, indice) => { const altura = item.quantidade ? Math.max(4, Math.round(item.quantidade / maior * 190)) : 0; const texto = rotulo === 'dia' ? new Date(`${item.data}T12:00:00`).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}) : `${String(item.hora).padStart(2, '0')}h`; const mostrarRotulo = rotulo === 'dia' ? indice % 2 === 0 : item.hora % 3 === 0; return `<div class="flex min-w-0 flex-1 flex-col items-center justify-end gap-1" title="${texto}: ${item.quantidade}"><span class="text-xs font-semibold">${item.quantidade}</span><div class="w-full rounded-t bg-indigo-600" style="height:${altura}px" aria-label="${texto}: ${item.quantidade} entregas"></div><span class="text-[10px] text-slate-600">${mostrarRotulo ? texto : '&nbsp;'}</span></div>`; }).join('')}</div><p class="mt-2 text-xs text-slate-500">Eixo horizontal: ${rotulo === 'dia' ? 'data (rótulo a cada 2 dias)' : 'hora do dia (rótulo a cada 3 horas)'} · Eixo vertical: quantidade</p>`;
 }
-function atualizar() {
- fetch('{{ url_for("central.andamento_json") }}?' + params).then(response => {
-   if (response.status === 401 || response.status === 403) { mostrarSessaoExpirada(); throw new Error('sessao'); }
-   return response.json();
- }).then(data => {
-  container.innerHTML=data.entregas.length ? data.entregas.map(e => `<article class="rounded-xl bg-white p-4 shadow-sm"><div class="flex flex-wrap justify-between gap-2"><strong>${e.farmacia} · ${e.cliente}</strong><span class="rounded-full px-3 py-1 text-xs font-semibold ${statusClass[e.status]}">${e.status}</span></div><p class="mt-2 text-sm text-slate-600">${e.bairro} · R$ ${e.taxa} · Motoboy: ${e.motoboy || 'Aguardando'}</p><p class="text-xs text-slate-500">Criada: ${new Date(e.criacao).toLocaleString('pt-BR')}</p><button data-cancel-id="${e.id}" data-cancel-cliente="${encodeURIComponent(e.cliente)}" data-cancel-bairro="${encodeURIComponent(e.bairro)}" class="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white">Cancelar</button></article>`).join('') : '<p class="rounded-xl bg-white p-4 text-slate-500">Nenhuma entrega encontrada.</p>';
- }).catch(error => { if (error.message !== 'sessao') container.dataset.error = 'true'; });
-}
-let polling = setInterval(atualizar, 10000);
-atualizar();
+function renderGraficos(graficos) { renderGrafico(graficoDias, graficos.entregas_por_dia, 'dia'); renderGrafico(graficoHoras, graficos.entregas_por_hora, 'hora'); }
+async function atualizar() { const query = new URLSearchParams(); const farmacia = document.getElementById('filtro-farmacia').value; const status = document.getElementById('filtro-status').value; if (farmacia) query.set('farmacia_id', farmacia); if (status) query.set('status', status); try { const response = await fetch(`{{ url_for('central.dashboard_json') }}?${query}`); if (response.status === 401 || response.status === 403) { mostrarSessaoExpirada(); return; } if (!response.ok) throw new Error('dashboard'); const data = await response.json(); renderCards(data.cards); renderAlertas(data.alertas); renderMotoboys(data.motoboys); renderEntregas(data.entregas); renderResumo(data.farmacias); if (!ultimoRedesenhoGraficos || Date.now() - ultimoRedesenhoGraficos >= 60000) { renderGraficos(data.graficos); ultimoRedesenhoGraficos = Date.now(); } } catch (error) { console.error(error); container.innerHTML = '<p class="rounded-xl bg-white p-4 text-red-600">Não foi possível carregar. Tentando novamente...</p>'; } }
+polling = setInterval(atualizar, 10000); atualizar();
 </script>
 {% endblock %}
