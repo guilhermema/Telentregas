@@ -12,10 +12,7 @@
     <h2 class="mt-4 font-bold">Tabela de preços</h2>
     <p class="text-sm text-slate-600">{% for b in farmacia.bairros_precos %}{{ b.bairro }} (R$ {{ '%.2f'|format(b.valor_taxa) }}){% if not loop.last %} · {% endif %}{% endfor %}</p>
   </div>
-  <section class="rounded-xl bg-white p-4 shadow-sm">
-    <h2 class="font-bold">Clientes da farmácia</h2>
-    <div class="mt-3 space-y-2">{% for cliente in clientes_farmacia %}<div class="border-b pb-2 text-sm"><strong>{{ cliente.nome }}</strong> · CPF {{ mask_cpf(cliente.cpf) }} · {{ cliente.telefone }}</div>{% else %}<p class="text-slate-500">Nenhum cliente cadastrado.</p>{% endfor %}</div>
-  </section>
+
   <form method="get" class="grid gap-3 rounded-xl bg-white p-4 shadow-sm sm:grid-cols-4 sm:items-end">
     <label>De<input required type="date" name="de" value="{{ data_de }}" class="mt-1 w-full rounded border px-2 py-2"></label>
     <label>Até<input required type="date" name="ate" value="{{ data_ate }}" class="mt-1 w-full rounded border px-2 py-2"></label>
