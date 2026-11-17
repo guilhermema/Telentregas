@@ -1,5 +1,5 @@
 {% extends "central/base.html" %}
 {% block title %}Clientes - Central{% endblock %}
 {% block central_content %}
-<div class="space-y-5"><h1 class="text-2xl font-bold">Clientes</h1><form class="flex gap-2"><input name="busca" value="{{ busca }}" placeholder="Buscar farmácia" class="flex-1 rounded border px-3 py-2"><button class="rounded border bg-white px-4">Buscar</button></form>{% for f in farmacias %}<a href="{{ url_for('central.cliente_detalhe', farmacia_id=f.id) }}" class="block rounded-xl bg-white p-4 shadow-sm hover:ring-2 hover:ring-indigo-400"><div class="flex justify-between"><strong>{{ f.razao_social }}</strong><span class="text-sm text-slate-600">{{ totais[f.id] }} entrega(s) no mês</span></div></a>{% endfor %}</div>
+<div class="space-y-5"><h1 class="page-title">Clientes</h1><form class="flex gap-2"><input name="busca" value="{{ busca }}" placeholder="Buscar farmácia" class="input flex-1"><button class="btn-secondary">Buscar</button></form>{% for f in farmacias %}<a href="{{ url_for('central.cliente_detalhe', farmacia_id=f.id) }}" class="card block hover:ring-2 hover:ring-brand-400"><div class="flex justify-between"><strong>{{ f.razao_social }}</strong><span class="text-sm text-slate-600">{{ totais[f.id] }} entrega(s) no mês</span></div></a>{% endfor %}</div>
 {% endblock %}

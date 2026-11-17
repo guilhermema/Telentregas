@@ -3,37 +3,37 @@
 {% block central_content %}
 <div class="space-y-5">
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <h1 class="text-2xl font-bold">{{ farmacia.razao_social }}</h1>
-    <a href="{{ url_for('central.clientes') }}" class="rounded border bg-white px-3 py-2">Voltar</a>
+    <h1 class="page-title">{{ farmacia.razao_social }}</h1>
+    <a href="{{ url_for('central.clientes') }}" class="btn-secondary btn-sm">Voltar</a>
   </div>
-  <div class="rounded-xl bg-white p-4 shadow-sm">
+  <div class="card">
     <p>{{ farmacia.cnpj_cpf }} · {{ farmacia.endereco_fixo }} · {{ farmacia.cidade }}/{{ farmacia.uf }} · {{ farmacia.telefone }}</p>
     <p class="text-sm text-slate-600">Responsável financeiro: {{ farmacia.responsavel_financeiro }}</p>
     <h2 class="mt-4 font-bold">Tabela de preços</h2>
     <p class="text-sm text-slate-600">{% for b in farmacia.bairros_precos %}{{ b.bairro }} (R$ {{ '%.2f'|format(b.valor_taxa) }}){% if not loop.last %} · {% endif %}{% endfor %}</p>
   </div>
 
-  <form method="get" class="grid gap-3 rounded-xl bg-white p-4 shadow-sm sm:grid-cols-4 sm:items-end">
-    <label>De<input required type="date" name="de" value="{{ data_de }}" class="mt-1 w-full rounded border px-2 py-2"></label>
-    <label>Até<input required type="date" name="ate" value="{{ data_ate }}" class="mt-1 w-full rounded border px-2 py-2"></label>
+  <form method="get" class="card grid gap-3 sm:grid-cols-4 sm:items-end">
+    <label class="label">De<input required type="date" name="de" value="{{ data_de }}" class="input mt-1"></label>
+    <label class="label">Até<input required type="date" name="ate" value="{{ data_ate }}" class="input mt-1"></label>
     <label class="flex items-center gap-2"><input type="checkbox" name="mostrar_canceladas" value="1" {% if mostrar_canceladas %}checked{% endif %}> Mostrar canceladas</label>
-    <button class="rounded bg-indigo-600 px-3 py-2 font-semibold text-white">Filtrar</button>
+    <button class="btn-primary">Filtrar</button>
   </form>
-  {% if erro %}<p class="rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">{{ erro }}</p>{% endif %}
-  <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+  {% if erro %}<p class="alert-error">{{ erro }}</p>{% endif %}
+  <div class="card flex flex-wrap items-center justify-between gap-3 border border-brand-200 bg-brand-50">
     <span>Total entregue: <strong>R$ {{ brl(total) }}</strong></span>
     {% if data_de and data_ate and not erro %}
       <label class="flex items-center gap-2 text-sm"><input id="relatorio-detalhado" type="checkbox"> Relatório detalhado</label>
-      <a id="gerar-pdf" href="{{ url_for('central.relatorio_pdf', farmacia_id=farmacia.id, de=data_de, ate=data_ate) }}" class="rounded-lg bg-indigo-700 px-4 py-2 font-semibold text-white">Gerar relatório PDF</a>
+      <a id="gerar-pdf" href="{{ url_for('central.relatorio_pdf', farmacia_id=farmacia.id, de=data_de, ate=data_ate) }}" class="btn-primary">Gerar relatório PDF</a>
     {% else %}<span class="text-sm text-indigo-700">Informe um período válido para gerar o PDF.</span>{% endif %}
   </div>
   {% for e in pagination.items %}
-    <article class="rounded-xl p-4 shadow-sm {{ 'border border-red-200 bg-red-50' if e.status == 'cancelada' else 'bg-white' }}">
-      <div class="flex justify-between"><strong>{{ e.nome_cliente }}</strong><span>{{ e.status|capitalize }}</span></div>
+    <article class="card {{ 'border border-red-200 bg-red-50' if e.status == 'cancelada' else '' }}">
+      <div class="flex justify-between"><strong>{{ e.nome_cliente }}</strong><span class="{% if e.status == 'cancelada' %}badge-cancelada{% elif e.status == 'entregue' %}badge-entregue{% elif e.status == 'coletada' %}badge-coletada{% elif e.status == 'aceita' %}badge-aceita{% else %}badge-pendente{% endif %}">{{ e.status|capitalize }}</span></div>
       <p class="text-sm">{{ e.bairro_entrega }} · R$ {{ '%.2f'|format(e.valor_taxa) }}</p>
       {% if e.status == 'cancelada' %}<p class="text-sm text-red-700">Motivo: {{ e.motivo_cancelamento or 'Não informado' }}</p>{% endif %}
     </article>
-  {% else %}<p class="rounded-xl bg-white p-4 text-slate-500">Nenhuma entrega no período.</p>{% endfor %}
+  {% else %}<p class="card text-slate-500">Nenhuma entrega no período.</p>{% endfor %}
 </div>
 <script>
 const detalhado = document.getElementById('relatorio-detalhado');

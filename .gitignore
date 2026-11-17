@@ -6,3 +6,4 @@ instance/
 .vscode/
 *.log
 *.sql
+node_modules/

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'telentregas-v3';
+const CACHE_VERSION = 'telentregas-v7';
 
 self.addEventListener('install', event => event.waitUntil(
   caches.open(CACHE_VERSION).then(cache => cache.addAll(['/motoboy/', '/static/css/app.css'])).then(() => self.skipWaiting())

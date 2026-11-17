@@ -1,46 +1,47 @@
 {% extends "central/base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Farmácias - Central{% endblock %}
 {% block central_content %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <div class="space-y-5">
-  <h1 class="text-2xl font-bold">Farmácias</h1>
-  <form method="post" class="grid gap-3 rounded-xl bg-white p-4 shadow-sm sm:grid-cols-2" data-localidade-form>
-    <div><label for="novo-username" class="mb-1 block text-sm font-medium">Username</label><input id="novo-username" name="username" class="w-full rounded-lg border px-3 py-2" required></div>
-    <div><label for="nova-senha" class="mb-1 block text-sm font-medium">Senha inicial</label><input id="nova-senha" name="password" type="password" minlength="8" class="w-full rounded-lg border px-3 py-2" required></div>
-    <div><label for="nova-razao" class="mb-1 block text-sm font-medium">Razão social</label><input id="nova-razao" name="razao_social" class="w-full rounded-lg border px-3 py-2" required></div>
-    <div><label for="novo-cnpj" class="mb-1 block text-sm font-medium">CNPJ/CPF</label><input id="novo-cnpj" name="cnpj_cpf" class="w-full rounded-lg border px-3 py-2" required></div>
-    <div><label for="novo-endereco" class="mb-1 block text-sm font-medium">Endereço</label><input id="novo-endereco" name="endereco_fixo" class="w-full rounded-lg border px-3 py-2" required></div>
-    <div><label for="nova-cidade" class="mb-1 block text-sm font-medium">Município</label><input id="nova-cidade" name="cidade" list="municipios-novo" value="Itajaí" class="w-full rounded-lg border px-3 py-2" required><datalist id="municipios-novo"></datalist></div>
-    <div><label for="novo-uf" class="mb-1 block text-sm font-medium">UF</label><select id="novo-uf" name="uf" data-valor="SC" class="w-full rounded-lg border px-3 py-2" required></select></div>
-    <div><label for="novo-telefone" class="mb-1 block text-sm font-medium">Telefone</label><input id="novo-telefone" name="telefone" class="w-full rounded-lg border px-3 py-2" required></div>
-    <div><label for="novo-responsavel" class="mb-1 block text-sm font-medium">Responsável financeiro</label><input id="novo-responsavel" name="responsavel_financeiro" class="w-full rounded-lg border px-3 py-2" required></div>
-    <button class="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white sm:col-span-2">Criar farmácia</button>
+  <h1 class="page-title">Farmácias</h1>
+  <form method="post" class="card grid gap-3 sm:grid-cols-2" data-localidade-form>
+    <div><label for="novo-username" class="label">Username</label><input id="novo-username" name="username" class="input" required></div>
+    <div><label for="nova-senha" class="label">Senha inicial</label><input id="nova-senha" name="password" type="password" minlength="8" class="input" required></div>
+    <div><label for="nova-razao" class="label">Razão social</label><input id="nova-razao" name="razao_social" class="input" required></div>
+    <div><label for="novo-cnpj" class="label">CNPJ/CPF</label><input id="novo-cnpj" name="cnpj_cpf" class="input" required></div>
+    <div><label for="novo-endereco" class="label">Endereço</label><input id="novo-endereco" name="endereco_fixo" class="input" required></div>
+    <div><label for="nova-cidade" class="label">Município</label><input id="nova-cidade" name="cidade" list="municipios-novo" value="Itajaí" class="input" required><datalist id="municipios-novo"></datalist></div>
+    <div><label for="novo-uf" class="label">UF</label><select id="novo-uf" name="uf" data-valor="SC" class="select" required></select></div>
+    <div><label for="novo-telefone" class="label">Telefone</label><input id="novo-telefone" name="telefone" class="input" required></div>
+    <div><label for="novo-responsavel" class="label">Responsável financeiro</label><input id="novo-responsavel" name="responsavel_financeiro" class="input" required></div>
+    <button class="btn-primary sm:col-span-2">Criar farmácia</button>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   </form>
-  <form class="flex gap-2"><label for="busca" class="sr-only">Buscar farmácia</label><input id="busca" name="busca" value="{{ busca }}" placeholder="Buscar username ou razão social" class="flex-1 rounded-lg border px-3 py-2"><button class="rounded-lg border bg-white px-4 py-2">Buscar</button></form>
+  <form class="flex gap-2"><label for="busca" class="sr-only">Buscar farmácia</label><input id="busca" name="busca" value="{{ busca }}" placeholder="Buscar username ou razão social" class="input flex-1"><button class="btn-secondary">Buscar</button></form>
   {% for f in farmacias %}
-  <article class="space-y-3 rounded-xl bg-white p-4 shadow-sm">
+  <article class="card space-y-3">
     <div class="flex justify-between"><strong>{{ f.razao_social }}</strong><span class="text-sm {{ 'text-green-700' if f.user.ativo else 'text-red-700' }}">{{ 'Ativa' if f.user.ativo else 'Desativada' }}</span></div>
     <p class="text-sm text-slate-600">Usuário: {{ f.user.username }}</p>
     <div id="mapa-{{ f.id }}" class="h-48 rounded-lg" data-lat="{{ f.latitude or '' }}" data-lng="{{ f.longitude or '' }}"></div>
     {% if not f.latitude or not f.longitude %}<p class="text-sm text-amber-700">Endereço não localizado. Ajuste o pino no mapa.</p>{% endif %}
     <form method="post" action="{{ url_for('central.salvar_posicao_farmacia', farmacia_id=f.id) }}" class="flex flex-wrap items-end gap-2">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="text-sm">Latitude<input name="latitude" id="lat-{{ f.id }}" value="{{ f.latitude or '' }}" class="ml-1 w-32 rounded border px-2 py-2" required></label><label class="text-sm">Longitude<input name="longitude" id="lng-{{ f.id }}" value="{{ f.longitude or '' }}" class="ml-1 w-32 rounded border px-2 py-2" required></label><button class="rounded bg-slate-700 px-3 py-2 text-white">Salvar posição</button>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="label">Latitude<input name="latitude" id="lat-{{ f.id }}" value="{{ f.latitude or '' }}" class="input" required></label><label class="label">Longitude<input name="longitude" id="lng-{{ f.id }}" value="{{ f.longitude or '' }}" class="input" required></label><button class="btn-secondary">Salvar posição</button>
     </form>
     <form method="post" action="{{ url_for('central.editar_farmacia', farmacia_id=f.id) }}" class="grid gap-2 sm:grid-cols-2" data-localidade-form>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div><label for="razao-{{ f.id }}" class="mb-1 block text-sm font-medium">Razão social</label><input id="razao-{{ f.id }}" name="razao_social" value="{{ f.razao_social }}" class="w-full rounded border px-2 py-2" required></div>
-      <div><label for="cnpj-{{ f.id }}" class="mb-1 block text-sm font-medium">CNPJ/CPF</label><input id="cnpj-{{ f.id }}" name="cnpj_cpf" value="{{ f.cnpj_cpf }}" class="w-full rounded border px-2 py-2" required></div>
-      <div><label for="endereco-{{ f.id }}" class="mb-1 block text-sm font-medium">Endereço</label><input id="endereco-{{ f.id }}" name="endereco_fixo" value="{{ f.endereco_fixo }}" class="w-full rounded border px-2 py-2" required></div>
-      <div><label for="cidade-{{ f.id }}" class="mb-1 block text-sm font-medium">Município</label><input id="cidade-{{ f.id }}" name="cidade" list="municipios-{{ f.id }}" value="{{ f.cidade }}" class="w-full rounded border px-2 py-2" required><datalist id="municipios-{{ f.id }}"></datalist></div>
-      <div><label for="uf-{{ f.id }}" class="mb-1 block text-sm font-medium">UF</label><select id="uf-{{ f.id }}" name="uf" data-valor="{{ f.uf }}" class="w-full rounded border px-2 py-2" required></select></div>
-      <div><label for="telefone-{{ f.id }}" class="mb-1 block text-sm font-medium">Telefone</label><input id="telefone-{{ f.id }}" name="telefone" value="{{ f.telefone }}" class="w-full rounded border px-2 py-2" required></div>
-      <div><label for="responsavel-{{ f.id }}" class="mb-1 block text-sm font-medium">Responsável financeiro</label><input id="responsavel-{{ f.id }}" name="responsavel_financeiro" value="{{ f.responsavel_financeiro }}" class="w-full rounded border px-2 py-2" required></div>
-      <button class="rounded bg-indigo-600 px-3 py-2 text-white">Salvar dados</button>
+      <div><label for="razao-{{ f.id }}" class="label">Razão social</label><input id="razao-{{ f.id }}" name="razao_social" value="{{ f.razao_social }}" class="input" required></div>
+      <div><label for="cnpj-{{ f.id }}" class="label">CNPJ/CPF</label><input id="cnpj-{{ f.id }}" name="cnpj_cpf" value="{{ f.cnpj_cpf }}" class="input" required></div>
+      <div><label for="endereco-{{ f.id }}" class="label">Endereço</label><input id="endereco-{{ f.id }}" name="endereco_fixo" value="{{ f.endereco_fixo }}" class="input" required></div>
+      <div><label for="cidade-{{ f.id }}" class="label">Município</label><input id="cidade-{{ f.id }}" name="cidade" list="municipios-{{ f.id }}" value="{{ f.cidade }}" class="input" required><datalist id="municipios-{{ f.id }}"></datalist></div>
+      <div><label for="uf-{{ f.id }}" class="label">UF</label><select id="uf-{{ f.id }}" name="uf" data-valor="{{ f.uf }}" class="select" required></select></div>
+      <div><label for="telefone-{{ f.id }}" class="label">Telefone</label><input id="telefone-{{ f.id }}" name="telefone" value="{{ f.telefone }}" class="input" required></div>
+      <div><label for="responsavel-{{ f.id }}" class="label">Responsável financeiro</label><input id="responsavel-{{ f.id }}" name="responsavel_financeiro" value="{{ f.responsavel_financeiro }}" class="input" required></div>
+      <button class="btn-primary">Salvar dados</button>
     </form>
     <div class="flex flex-wrap gap-2">
-      <form method="post" action="{{ url_for('central.status_farmacia', farmacia_id=f.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="button" data-confirm-action="{{ url_for('central.status_farmacia', farmacia_id=f.id) }}" data-confirm-message="{{ 'Desativar esta farmácia?' if f.user.ativo else 'Ativar esta farmácia?' }}" class="rounded bg-amber-600 px-3 py-2 text-white">{{ 'Desativar' if f.user.ativo else 'Ativar' }}</button></form>
-      <form method="post" action="{{ url_for('central.resetar_senha_farmacia', farmacia_id=f.id) }}" class="flex gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="senha-{{ f.id }}" class="sr-only">Nova senha</label><input id="senha-{{ f.id }}" name="password" minlength="8" placeholder="Nova senha" class="rounded border px-2"><button class="rounded bg-slate-700 px-3 py-2 text-white">Resetar senha</button></form>
+      <form method="post" action="{{ url_for('central.status_farmacia', farmacia_id=f.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="button" data-confirm-action="{{ url_for('central.status_farmacia', farmacia_id=f.id) }}" data-confirm-message="{{ 'Desativar esta farmácia?' if f.user.ativo else 'Ativar esta farmácia?' }}" class="btn-warning">{{ 'Desativar' if f.user.ativo else 'Ativar' }}</button></form>
+      <form method="post" action="{{ url_for('central.resetar_senha_farmacia', farmacia_id=f.id) }}" class="flex gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="senha-{{ f.id }}" class="sr-only">Nova senha</label><input id="senha-{{ f.id }}" name="password" minlength="8" placeholder="Nova senha" class="input"><button class="btn-secondary">Resetar senha</button></form>
     </div>
   </article>
   {% endfor %}

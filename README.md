@@ -17,7 +17,7 @@ Sistema web de gestão de entregas para motoboys, pensado para farmácias. A far
 |---|---|---|
 | ![Central](docs/screenshots/central.png) | ![Motoboy](docs/screenshots/motoboy.png) | ![PDF](docs/screenshots/relatorio.png) |
 
-Vídeo de demonstração: [adicione o link aqui]
+
 
 > A versão publicada pode estar offline: ela roda em plano gratuito, que "dorme" após alguns minutos sem uso.
 
@@ -123,6 +123,45 @@ flask --app app:create_app run --debug
 
 Acesse `http://127.0.0.1:5000`. Para testar o Web Push no celular é preciso HTTPS (por exemplo, com um túnel do Cloudflare).
 
+### Build do CSS
+
+O Tailwind é compilado antes do deploy e o resultado versionado em
+`app/static/css/app.css`. Para instalar as dependências frontend e gerar o
+CSS minificado:
+
+```bash
+# requer Node.js/npm instalados
+npm install
+npm run build:css
+```
+
+Durante o desenvolvimento, use `npm run watch:css` para recompilar ao salvar
+templates ou arquivos JavaScript.
+
+### Design tokens e componentes
+
+Os tokens e componentes reutilizáveis ficam em
+`app/static/css/input.css`, dentro de `@layer components`, e são compilados
+para `app/static/css/app.css`. A escala `brand` usa a cor primária
+`#4f46e5`; a fonte é a pilha nativa do sistema, sem fonte externa.
+
+Componentes disponíveis:
+
+- Ações: `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-danger`,
+  `.btn-warning`, `.btn-success`, `.btn-sm`, `.btn-touch`, `.btn-icon`,
+  `.btn-aceitar`, `.btn-coletada`, `.btn-entregue` e `.btn-nav`.
+- Formulários: `.input`, `.label` e `.field-error`.
+- Navegação: `.select`, `.nav-link` e `.nav-link-active`.
+- Estrutura: `.card`, `.card-lg`, `.page-title` e `.section-title`.
+- Status: `.badge`, `.badge-pendente`, `.badge-aceita`,
+  `.badge-coletada`, `.badge-entregue` e `.badge-cancelada`.
+- Feedback e diálogos: `.alert-success`, `.alert-error`, `.alert-warning`,
+  `.modal-overlay` e `.modal-panel`.
+
+As variantes coloridas usam texto escuro em fundos claros ou texto branco em
+fundos escuros para manter contraste adequado. `.btn-touch` deve ser usado
+nas ações do motoboy para preservar altura mínima de 48px.
+
 ### Testes
 
 ```bash
@@ -184,6 +223,3 @@ Dockerfile        imagem para produção
 Desenvolvido por **Guilherme** ([@guilhermema](https://github.com/guilhermema)).
 https://www.linkedin.com/in/guilhermeribeirodev02/
 
-## Licença
-
-[Defina a licença antes de publicar. Veja as opções no passo a passo.]

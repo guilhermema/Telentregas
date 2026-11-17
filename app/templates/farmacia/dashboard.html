@@ -1,75 +1,79 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Farmácia - TelEntregas{% endblock %}
 {% block content %}
 <div class="space-y-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
-      <h1 class="text-2xl font-bold">{{ 'Nova entrega pela Central' if central_form else farmacia.razao_social }}</h1>
+      {% if not central_form %}<p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Painel da farmácia</p>{% endif %}
+      <h1 class="page-title">{{ 'Nova entrega pela Central' if central_form else farmacia.razao_social }}</h1>
       <p class="text-slate-600">{{ 'Selecione a farmácia e preencha os dados da entrega' if central_form else 'Nova entrega e entregas em andamento' }}</p>
     </div>
-    {% if not central_form %}<div class="flex gap-2"><a href="{{ url_for('farmacia.clientes') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold">Meus clientes</a><a href="{{ url_for('farmacia.historico') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Histórico</a></div>{% endif %}
+    {% if not central_form %}<div class="flex gap-2"><a href="{{ url_for('farmacia.clientes') }}" class="btn-secondary btn-sm">Meus clientes</a><a href="{{ url_for('farmacia.historico') }}" class="btn-secondary btn-sm">Histórico</a></div>{% endif %}
   </div>
 
   {% if central_form %}
-  <form method="get" class="rounded-xl bg-white p-4 shadow-sm">
-    <label class="mb-1 block text-sm font-medium" for="central-farmacia">Farmácia</label>
-    <select id="central-farmacia" name="farmacia_id" class="w-full rounded-lg border px-3 py-2" onchange="this.form.submit()"><option value="">Selecione uma farmácia</option>{% for item in farmacias %}<option value="{{ item.id }}" {% if selected_farmacia_id == item.id %}selected{% endif %}>{{ item.razao_social }}</option>{% endfor %}</select>
+  <form method="get" class="card">
+    <label class="label" for="central-farmacia">Farmácia</label>
+    <select id="central-farmacia" name="farmacia_id" class="select" onchange="this.form.submit()"><option value="">Selecione uma farmácia</option>{% for item in farmacias %}<option value="{{ item.id }}" {% if selected_farmacia_id == item.id %}selected{% endif %}>{{ item.razao_social }}</option>{% endfor %}</select>
   </form>
   {% endif %}
   {% if not bairros and farmacia %}
-    <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+    <div class="alert-warning">
       <p class="font-semibold">Bairro não cadastrado. Solicite à Central</p>
       {% if config.CENTRAL_WHATSAPP %}
-        <a class="mt-3 inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white"
+        <a class="btn-success mt-3"
            href="https://wa.me/{{ config.CENTRAL_WHATSAPP }}?text={{ ('Olá, Central! A farmácia ' ~ farmacia.razao_social ~ ' precisa cadastrar um bairro.')|urlencode }}"
            target="_blank" rel="noopener">Solicitar pelo WhatsApp</a>
       {% endif %}
     </div>
   {% endif %}
 
-  <section class="rounded-xl bg-white p-5 shadow-sm">
-    <h2 class="mb-4 text-xl font-bold">Nova entrega</h2>
+  <div class="{% if not central_form %}grid items-start gap-6 lg:grid-cols-5{% endif %}">
+  <section class="card-lg {% if not central_form %}lg:col-span-3{% endif %}">
+    <h2 class="section-title mb-4">Nova entrega</h2>
     <form method="post" action="{{ url_for('central.nova_entrega') if central_form else url_for('farmacia.nova_entrega') }}" class="grid gap-4 md:grid-cols-2">
       {{ form.hidden_tag() }}
       {% if central_form and farmacia %}<input type="hidden" name="farmacia_id" value="{{ farmacia.id }}">{% endif %}
       <div class="md:col-span-2">
-        {{ form.cpf_cliente.label(class="mb-1 block text-sm font-medium") }}
-        {{ form.cpf_cliente(class="w-full rounded-lg border border-slate-300 px-3 py-2", id="cpf-cliente", inputmode="numeric", autocomplete="off") }}
+        {{ form.cpf_cliente.label(class="label") }}
+        {{ form.cpf_cliente(class="input", id="cpf-cliente", inputmode="numeric", autocomplete="off") }}
         <p class="mt-1 text-xs text-slate-500">O CPF é usado para identificar o cliente nos próximos pedidos.</p>
         <p id="cliente-aviso" class="mt-1 text-sm text-slate-600"></p>
       </div>
       {% for field in [form.nome_cliente, form.telefone_cliente, form.endereco_entrega] %}
         <div {% if field.name == 'endereco_entrega' %}class="md:col-span-2"{% endif %}>
-          {{ field.label(class="mb-1 block text-sm font-medium") }}
-          {{ field(class="w-full rounded-lg border border-slate-300 px-3 py-2", placeholder=field.label.text) }}
-          {% if field.name == 'endereco_entrega' %}<select id="outros-enderecos" class="mt-2 hidden w-full rounded-lg border border-slate-300 px-3 py-2" aria-label="Outros endereços deste cliente"></select><button id="limpar-endereco" type="button" class="mt-1 hidden text-sm text-slate-600 underline">Limpar endereço preenchido</button>{% endif %}
-          {% for error in field.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+          {{ field.label(class="label") }}
+          {{ field(class="input", placeholder=field.label.text) }}
+          {% if field.name == 'endereco_entrega' %}<select id="outros-enderecos" class="select mt-2 hidden" aria-label="Outros endereços deste cliente"></select><button id="limpar-endereco" type="button" class="btn-secondary btn-sm mt-1 hidden">Limpar endereço preenchido</button>{% endif %}
+          {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
         </div>
       {% endfor %}
       <div>
-        {{ form.bairro_entrega.label(class="mb-1 block text-sm font-medium") }}
-        {{ form.bairro_entrega(class="w-full rounded-lg border border-slate-300 px-3 py-2", id="bairro-entrega") }}
-        {% for error in form.bairro_entrega.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
-        <p class="mt-1 text-sm text-slate-600">Taxa: <strong id="taxa-bairro">Selecione um bairro</strong></p>
+        {{ form.bairro_entrega.label(class="label") }}
+        <div class="flex items-center justify-between gap-2"><span class="sr-only">Bairro</span><span class="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700">Taxa: <strong id="taxa-bairro">Selecione um bairro</strong></span></div>
+        {{ form.bairro_entrega(class="select mt-2", id="bairro-entrega") }}
+        {% for error in form.bairro_entrega.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
         <p class="mt-2 text-sm text-slate-600">
           Não encontrou o bairro?
           <a
             href="https://wa.me/{{ config.CENTRAL_WHATSAPP }}?text={{ ('Olá, sou da farmácia ' ~ farmacia.razao_social ~ ' e preciso cadastrar um novo bairro na tabela de preços.')|urlencode }}"
             target="_blank"
             rel="noopener noreferrer"
-            class="font-semibold text-green-700 underline hover:text-green-800"
-          >Solicitar à Central</a>
+            class="inline-flex items-center gap-1 font-semibold text-green-700 underline hover:text-green-800"
+          >{{ icon('message-circle', 'h-4 w-4') }} Solicitar à Central</a>
         </p>
       </div>
       <div class="md:col-span-2">
-        {{ form.forma_pagamento.label(class="mb-1 block text-sm font-medium") }}
-        {{ form.forma_pagamento(class="w-full rounded-lg border border-slate-300 px-3 py-2", id="forma-pagamento") }}
-        {% for error in form.forma_pagamento.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+        {{ form.forma_pagamento.label(class="label") }}
+        {{ form.forma_pagamento(class="select", id="forma-pagamento") }}
+        {% for error in form.forma_pagamento.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
       </div>
+      <div class="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200 md:col-span-2">
       <div id="campo-valor-cobrar" class="hidden">
-        {{ form.valor_cobrar.label(class="mb-1 block text-sm font-medium") }}
-        {{ form.valor_cobrar(class="w-full rounded-lg border border-slate-300 px-3 py-2", placeholder="0,00", inputmode="decimal") }}
-        {% for error in form.valor_cobrar.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+        {{ form.valor_cobrar.label(class="label") }}
+        {{ form.valor_cobrar(class="input", placeholder="0,00", inputmode="decimal") }}
+        {% for error in form.valor_cobrar.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
       </div>
       <div id="campo-maquininha" class="hidden items-center gap-2 pt-7">
         {{ form.usa_maquininha(class="h-4 w-4 rounded border-slate-300") }}
@@ -80,39 +84,41 @@
           {{ form.precisa_troco(class="h-4 w-4 rounded border-slate-300", id="precisa-troco") }}
           {{ form.precisa_troco.label(class="text-sm font-medium") }}
         </div>
+        </div>
         <div id="campo-troco" class="mt-3 hidden max-w-xs">
-          {{ form.valor_troco.label(class="mb-1 block text-sm font-medium") }}
-          {{ form.valor_troco(class="w-full rounded-lg border border-slate-300 px-3 py-2", placeholder="0,00", step="0.01", min="0.01") }}
-          {% for error in form.valor_troco.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+          {{ form.valor_troco.label(class="label") }}
+          {{ form.valor_troco(class="input", placeholder="0,00", step="0.01", min="0.01") }}
+          {% for error in form.valor_troco.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
         </div>
       </div>
       <div class="md:col-span-2">
-        {{ form.observacoes.label(class="mb-1 block text-sm font-medium") }}
-        {{ form.observacoes(class="w-full rounded-lg border border-slate-300 px-3 py-2", rows="3") }}
-        {% for error in form.observacoes.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+        {{ form.observacoes.label(class="label") }}
+        {{ form.observacoes(class="input", rows="3") }}
+        {% for error in form.observacoes.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
       </div>
       <div class="md:col-span-2">
-        {{ form.submit(class="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700", disabled=not bairros) }}
+        {{ form.submit(class="btn-primary btn-lg w-full", disabled=not bairros) }}
       </div>
     </form>
   </section>
 
-  {% if not central_form %}<section class="rounded-xl bg-white p-5 shadow-sm">
+  {% if not central_form %}<section class="card lg:sticky lg:top-20 lg:col-span-2">
     <div class="mb-4 flex items-center justify-between">
-      <h2 class="text-xl font-bold">Em andamento</h2>
-      <span class="text-sm text-slate-500">Atualiza a cada 10 segundos</span>
+      <h2 class="section-title">Em andamento</h2>
+      <span class="inline-flex items-center gap-2 text-sm text-slate-500"><span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>Atualiza a cada 10 segundos</span>
     </div>
     <div id="entregas-andamento" class="space-y-3">
-      <p class="text-slate-500">Carregando...</p>
+      <p class="animate-pulse text-slate-500">Carregando...</p>
     </div>
   </section>{% endif %}
+  {% if not central_form %}</div>{% endif %}
 </div>
 <script>
 const bairros = {{ bairros|map(attribute='bairro')|list|tojson }};
 const clienteLookupUrl = {{ (cliente_lookup_url if central_form else url_for('farmacia.buscar_cliente'))|tojson }};
 const taxas = {{ taxas|tojson }};
 const statusLabels = {pendente: 'Pendente', aceita: 'Aceita', coletada: 'Coletada'};
-const statusClasses = {pendente: 'bg-amber-100 text-amber-800', aceita: 'bg-blue-100 text-blue-800', coletada: 'bg-purple-100 text-purple-800'};
+const statusClasses = {pendente: 'badge-pendente', aceita: 'badge-aceita', coletada: 'badge-coletada'};
 const bairroSelect = document.getElementById('bairro-entrega');
 const taxa = document.getElementById('taxa-bairro');
 const troco = document.getElementById('precisa-troco');
@@ -176,15 +182,16 @@ function atualizarAndamento() {
     })
     .then(data => {
       const container = document.getElementById('entregas-andamento');
-      if (!data.entregas.length) { container.innerHTML = '<p class="text-slate-500">Nenhuma entrega em andamento.</p>'; return; }
+      if (!data.entregas.length) { container.innerHTML = `<div class="py-8 text-center text-slate-500"><span class="mx-auto mb-2 block w-fit text-slate-300">${ICONS.package}</span><p>Nenhuma entrega em andamento.</p></div>`; return; }
       container.innerHTML = data.entregas.map(entrega => `
-        <article class="rounded-lg border border-slate-200 p-4">
+        <article class="rounded-2xl border border-slate-200 p-4 shadow-sm">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <strong>${entrega.nome_cliente}</strong>
             <span class="rounded-full px-3 py-1 text-xs font-semibold ${statusClasses[entrega.status]}">${statusLabels[entrega.status]}</span>
           </div>
           <p class="mt-2 text-sm text-slate-600">${entrega.bairro} · R$ ${entrega.valor_taxa} · Motoboy: ${entrega.motoboy || 'Aguardando aceite'}</p>
           <p class="mt-1 text-xs text-slate-500">Criada: ${formatarData(entrega.data_criacao)} · Aceita: ${formatarData(entrega.data_aceite)} · Coletada: ${formatarData(entrega.data_coleta)}</p>
+          <div class="stepper mt-3 w-full">${['pendente','aceita','coletada','entregue'].map((passo, indice) => `<span class="h-2 flex-1 rounded-full ${['pendente','aceita','coletada','entregue'].indexOf(entrega.status) >= indice ? 'bg-brand-500' : 'bg-slate-200'}"></span>`).join('')}</div>
         </article>`).join('');
     }).catch(() => {});
 }

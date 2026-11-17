@@ -1,23 +1,28 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block container_class %}max-w-7xl{% endblock %}
 {% block content %}
 <div class="lg:flex lg:gap-6">
-  <button id="menu-central" class="mb-4 rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white lg:hidden">☰ Menu</button>
-  <aside id="sidebar-central" class="mb-5 hidden w-full shrink-0 rounded-xl bg-slate-900 p-3 text-white lg:block lg:w-56">
+  <button id="menu-central" class="btn-primary mb-4 lg:hidden" aria-label="Abrir menu">
+    {{ icon('menu') }}
+    <span class="ml-2">Menu</span>
+  </button>
+  <aside id="sidebar-central" class="mb-5 hidden w-full shrink-0 rounded-2xl bg-white p-2 shadow-sm ring-1 ring-slate-200 lg:sticky lg:top-20 lg:block lg:w-60 lg:self-start">
     <nav class="space-y-1">
-      {% for endpoint, label in [('central.dashboard','Em andamento'),('central.farmacias','Farmácias'),('central.motoboys','Motoboys'),('central.precos','Tabela de Preços'),('central.clientes','Clientes')] %}
-        <a href="{{ url_for(endpoint) }}" class="block rounded-lg px-3 py-3 text-sm {% if request.endpoint == endpoint %}bg-indigo-600 font-bold{% else %}hover:bg-slate-700{% endif %}">{{ label }}</a>
+      {% for endpoint, label, symbol in [('central.dashboard','Em andamento','activity'),('central.farmacias','Farmácias','store'),('central.motoboys','Motoboys','users'),('central.precos','Tabela de Preços','tag'),('central.clientes','Clientes','users')] %}
+      <a href="{{ url_for(endpoint) }}" class="{% if request.endpoint == endpoint %}nav-link-active{% else %}nav-link{% endif %}">{{ icon(symbol, 'h-5 w-5') }}<span>{{ label }}</span></a>
       {% endfor %}
     </nav>
   </aside>
   <div class="min-w-0 flex-1">{% block central_content %}{% endblock %}</div>
 </div>
-<div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true">
-  <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-    <h2 id="confirm-title" class="text-xl font-bold">Confirmar ação</h2>
+<div id="confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal-panel">
+    <h2 id="confirm-title" class="section-title">Confirmar ação</h2>
     <p id="confirm-message" class="mt-2 text-slate-600"></p>
     <div class="mt-6 flex justify-end gap-3">
-      <button type="button" data-modal-close class="rounded-lg border px-4 py-2">Voltar</button>
-      <button type="button" id="confirm-submit" class="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white">Confirmar</button>
+      <button type="button" data-modal-close class="btn-secondary">Voltar</button>
+      <button type="button" id="confirm-submit" class="btn-danger">Confirmar</button>
     </div>
   </div>
 </div>

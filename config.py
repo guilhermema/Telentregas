@@ -19,7 +19,7 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-change-me")
     SQLALCHEMY_DATABASE_URI = _database_url()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    ASSET_VERSION = os.getenv("ASSET_VERSION", "1")
+    ASSET_VERSION = os.getenv("ASSET_VERSION", "5")
     CENTRAL_WHATSAPP = os.getenv("CENTRAL_WHATSAPP", "")
     VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
     VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
